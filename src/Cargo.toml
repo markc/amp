@@ -1,0 +1,47 @@
+# amp — Agent Mesh Protocol library family.
+#
+# Three workspace members, no internal deps outside this workspace:
+# `cosmix-lib-amp` is the wire-format leaf; `cosmix-lib-client` and
+# `cosmix-lib-props-core` both sibling-path-dep `cosmix-lib-amp` via
+# `../cosmix-lib-amp`. amp builds standalone — `cargo build
+# --workspace` from `~/.amp/src/`.
+#
+# Consumers in sibling repos (the [mix](https://github.com/markc/mix)
+# scripting language, the [cos](https://github.com/markc/cos) cosmix
+# daemon family) reach these three crates via path-deps shaped like
+# `../../../../.amp/src/crates/<crate>` until crates.io publish flips
+# the world to version-deps.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/cosmix-lib-amp",
+    "crates/cosmix-lib-client",
+    "crates/cosmix-lib-props-core",
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/markc/amp"
+
+# Workspace-resolved deps used by the three member crates. Versions
+# are kept in sync with the sibling cos and mix workspaces so that a
+# combined build (amp + mix + cos siblings) resolves a single version
+# of each shared dep.
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+tracing = "0.1"
+tokio = { version = "1", features = ["full"] }
+libc = "0.2"
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
