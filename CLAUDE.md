@@ -8,6 +8,19 @@ The Agent Mesh Protocol library family. Three crates: `cosmix-lib-amp` (wire for
 
 amp is the *protocol layer* — every byte that travels between AMP peers is defined here. It deliberately holds no substrate (storage, TLS, auto-resolve, config-file loaders). Anything that needs files, sockets beyond the broker WebSocket, or persistent state belongs in [cos](https://github.com/markc/cos), not here.
 
+## Four-repo split
+
+Part of the Cosmix four-repo constellation (extracted 2026-05-29). One-way dependency order — **amp ← mix ← cos** (and amp ← cos directly); the private **cosmix** hub orchestrates all three and is depended on by none.
+
+| Repo | Path | Visibility | Role |
+|---|---|---|---|
+| **amp** | `~/.amp/` | public · markc/amp | AMP protocol family — `cosmix-lib-amp` + `cosmix-lib-client` + `cosmix-lib-props-core` (3 crates). Depends on nothing. |
+| **mix** | `~/.mix/` | public · markc/mix | Mix language — `cosmix-lib-mix` + `cosmix-mix` + `mix-bench` (3 crates). Depends on amp. |
+| **cos** | `~/.cos/` | public · markc/cos | Substrate libraries + daemon family (27 crates). Depends on amp + mix. |
+| **cosmix** | `~/.cosmix/` | private · markc/cosmix | Orchestration hub: docs, specs, journals, mesh-private operational state, deploy scripts. No code; drives the three public repos. |
+
+**→ This repo is `amp`** — the protocol layer; it builds standalone, no sibling repos required.
+
 ## Layout
 
 ```
