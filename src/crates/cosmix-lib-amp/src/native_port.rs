@@ -379,7 +379,6 @@ pub async fn call_port(
             Ok(serde_json::from_str(&resp.body)?)
         }
     } else {
-        let error = resp.get("error").unwrap_or("unknown error");
-        anyhow::bail!("{error}")
+        anyhow::bail!("{}", resp.error_message())
     }
 }

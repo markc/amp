@@ -160,8 +160,7 @@ impl NodedClient {
         if let Some(rc) = response.get("rc") {
             let rc: u8 = rc.parse().unwrap_or(0);
             if rc >= 10 {
-                let error = response.get("error").unwrap_or("unknown error");
-                anyhow::bail!("{error}");
+                anyhow::bail!("{}", response.error_message());
             }
         }
 

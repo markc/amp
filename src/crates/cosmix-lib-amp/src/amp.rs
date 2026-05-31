@@ -110,6 +110,35 @@ impl AmpMessage {
         self.get("json").and_then(|s| serde_json::from_str(s).ok())
     }
 
+    /// Best-effort human-readable error detail for an error reply
+    /// (`rc >= 10`). Looks in priority order: the `error` *header*, then
+    /// an `{"error": "..."}` field in the JSON *body* (where cosmix
+    /// daemons actually place their errors), then the raw body text, and
+    /// only falls back to the literal `"unknown error"` when the reply
+    /// carries no detail at all.
+    ///
+    /// Without the body fallback, every daemon that reports its error via
+    /// the body — the common case (`json_error()` in cosmix-indexd,
+    /// cosmix-maild, …) — surfaces to AMP callers as the opaque string
+    /// `"unknown error"`, discarding the real cause. That opacity is what
+    /// turned an `invalid type: floating point 2.0, expected usize`
+    /// deserialize error into an undiagnosable `rc=10 unknown error`.
+    pub fn error_message(&self) -> String {
+        if let Some(e) = self.get("error") {
+            return e.to_string();
+        }
+        let body = self.body.trim();
+        if !body.is_empty() {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(body)
+                && let Some(e) = v.get("error").and_then(|e| e.as_str())
+            {
+                return e.to_string();
+            }
+            return body.to_string();
+        }
+        "unknown error".to_string()
+    }
+
     // ── Display protocol accessors ──
 
     /// Get the panel/widget `id`.
@@ -1148,5 +1177,36 @@ mod tests {
                 .iter()
                 .any(|w| w.contains("args is not valid JSON"))
         );
+    }
+
+    #[test]
+    fn error_message_prefers_header() {
+        let mut msg = AmpMessage::new().with_header("error", "header wins");
+        msg.body = r#"{"error":"body loses"}"#.to_string();
+        assert_eq!(msg.error_message(), "header wins");
+    }
+
+    #[test]
+    fn error_message_falls_back_to_json_body() {
+        // The common cosmix-daemon case: error only in the JSON body.
+        // This is the regression guard for the rc=10 "unknown error"
+        // opacity — the body's "error" field must surface.
+        let msg = AmpMessage::new()
+            .with_body(r#"{"error":"invalid type: floating point `2.0`, expected usize"}"#);
+        assert_eq!(
+            msg.error_message(),
+            "invalid type: floating point `2.0`, expected usize"
+        );
+    }
+
+    #[test]
+    fn error_message_falls_back_to_raw_body() {
+        let msg = AmpMessage::new().with_body("plain text failure");
+        assert_eq!(msg.error_message(), "plain text failure");
+    }
+
+    #[test]
+    fn error_message_unknown_when_empty() {
+        assert_eq!(AmpMessage::new().error_message(), "unknown error");
     }
 }
