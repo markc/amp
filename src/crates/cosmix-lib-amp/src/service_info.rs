@@ -81,7 +81,7 @@ pub struct ServiceInfo {
     /// Record-format version (see [`SCHEMA_VERSION`]).
     #[serde(default = "default_schema_version")]
     pub schema_version: u16,
-    /// Open forward field — experimental / node-specific scalars.
+    /// Open forward field — experimental / node-specific JSON values.
     #[serde(default, skip_serializing_if = "is_empty_map")]
     pub meta: serde_json::Map<String, serde_json::Value>,
 }
