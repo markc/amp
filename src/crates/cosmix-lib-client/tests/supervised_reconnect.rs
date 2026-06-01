@@ -25,6 +25,9 @@ struct StubState {
     /// `from` of every `noded.register` request, in order — one per
     /// connection, so length == number of (re-)registrations.
     register_names: Vec<String>,
+    /// Body (RegisterProvenance JSON) of every `noded.register`, in order
+    /// — proves provenance is re-sent on reconnect, not only initial.
+    register_bodies: Vec<String>,
     /// `name` header of every RC-0 `topic.subscribe`, in order — proves
     /// replay order.
     subscribed: Vec<String>,
@@ -170,6 +173,7 @@ async fn run_stub(listener: TcpListener, stub: Arc<Stub>) {
                         let collision = {
                             let mut s = stub.state.lock().await;
                             s.register_names.push(from.clone());
+                            s.register_bodies.push(req.body.clone());
                             if forced_reject {
                                 true
                             } else {
@@ -380,6 +384,73 @@ async fn reconnects_reregisters_replays_and_keeps_incoming_stream() {
         "broker must observe noded.deregister"
     );
     assert_eq!(client.state(), ConnState::ShuttingDown);
+}
+
+/// Version-discovery contract: provenance passed to
+/// `connect_supervised_with_provenance` is sent on the INITIAL register
+/// AND re-sent on every reconnect (built once, cloned from SupervisorCtx).
+/// A regression that sent it only on the first connect would leave a
+/// reconnected citizen provenance-less in `noded.list`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reconnect_resends_provenance() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let stub = Stub::new(false, false);
+    tokio::spawn(run_stub(listener, stub.clone()));
+
+    let url = format!("ws://127.0.0.1:{port}/ws");
+    let prov = cosmix_amp::RegisterProvenance::from_parts(
+        "cosmix-mix",
+        "9.9.9-test",
+        "deadbeefcafe",
+        false,
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T00:00:00Z".to_string(),
+    );
+    let client = SupervisedClient::connect_supervised_with_provenance(
+        "cosmix-statecache",
+        &url,
+        Some(prov),
+    )
+    .await
+    .expect("initial connect");
+    assert_eq!(client.state(), ConnState::Connected);
+
+    // Initial register carried the provenance body.
+    {
+        let s = stub.state.lock().await;
+        assert_eq!(s.register_bodies.len(), 1);
+        assert!(
+            s.register_bodies[0].contains("9.9.9-test"),
+            "initial register must carry provenance: {:?}",
+            s.register_bodies[0]
+        );
+    }
+
+    // Bounce → reconnect → the SECOND register must carry it too.
+    stub.drop_conn1.notify_waiters();
+    let stub2 = stub.clone();
+    assert!(
+        wait_until(10, || {
+            stub2
+                .state
+                .try_lock()
+                .map(|s| s.register_bodies.len() >= 2)
+                .unwrap_or(false)
+        })
+        .await,
+        "expected a reconnect re-register"
+    );
+    {
+        let s = stub.state.lock().await;
+        assert!(
+            s.register_bodies[1].contains("9.9.9-test"),
+            "reconnect register must RE-SEND provenance: {:?}",
+            s.register_bodies[1]
+        );
+    }
+    // (No deregister: the contract under test — provenance re-sent on
+    // reconnect — is already asserted; the client drops at scope end.)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

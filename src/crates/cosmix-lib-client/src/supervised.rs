@@ -260,12 +260,28 @@ impl SupervisedClient {
         service_name: &str,
         noded_url: &str,
     ) -> Result<SupervisedClient, SupervisedError> {
+        Self::connect_supervised_with_provenance(service_name, noded_url, None).await
+    }
+
+    /// Like [`connect_supervised`](Self::connect_supervised) but sends
+    /// `provenance` (build version / git_sha / build_time / pid / …) on
+    /// every register — re-sent across reconnects (built ONCE by the
+    /// citizen so `started_at` stays the true process start). A
+    /// `mix --serve` citizen uses this to report the mix binary's build
+    /// (version-discovery contract).
+    pub async fn connect_supervised_with_provenance(
+        service_name: &str,
+        noded_url: &str,
+        provenance: Option<cosmix_amp::RegisterProvenance>,
+    ) -> Result<SupervisedClient, SupervisedError> {
         let state = Arc::new(AtomicU8::new(ConnState::Connecting as u8));
 
         let mut last_err: Option<anyhow::Error> = None;
         let mut client: Option<NodedClient> = None;
         for attempt in 0..MAX_INITIAL_ATTEMPTS {
-            match NodedClient::connect(service_name, noded_url).await {
+            match NodedClient::connect_with_provenance(service_name, noded_url, provenance.clone())
+                .await
+            {
                 Ok(c) => {
                     client = Some(c);
                     break;
@@ -330,6 +346,7 @@ impl SupervisedClient {
             shutdown_rx,
             service_name: service_name.to_string(),
             noded_url: noded_url.to_string(),
+            provenance,
             first_rx,
         }));
 
@@ -699,6 +716,10 @@ struct SupervisorCtx {
     shutdown_rx: watch::Receiver<bool>,
     service_name: String,
     noded_url: String,
+    /// Build provenance re-sent on every (re)register — built once by the
+    /// citizen and cloned into each reconnect, so started_at stays the
+    /// true process start (version-discovery contract).
+    provenance: Option<cosmix_amp::RegisterProvenance>,
     first_rx: mpsc::UnboundedReceiver<IncomingCommand>,
 }
 
@@ -778,7 +799,13 @@ async fn supervisor_loop(mut ctx: SupervisorCtx) {
                 return;
             }
 
-            match NodedClient::connect(&ctx.service_name, &ctx.noded_url).await {
+            match NodedClient::connect_with_provenance(
+                &ctx.service_name,
+                &ctx.noded_url,
+                ctx.provenance.clone(),
+            )
+            .await
+            {
                 Ok(client) => {
                     // A stop requested *during* the connect await must
                     // not yield a swapped-in, broker-registered client
