@@ -99,6 +99,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmix-lib-buildinfo"
+version = "0.1.0"
+
+[[package]]
 name = "cosmix-lib-client"
 version = "0.1.1"
 dependencies = [

@@ -16,6 +16,7 @@
 resolver = "2"
 members = [
     "crates/cosmix-lib-amp",
+    "crates/cosmix-lib-buildinfo",
     "crates/cosmix-lib-client",
     "crates/cosmix-lib-props-core",
 ]
