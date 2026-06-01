@@ -564,13 +564,27 @@ impl NodedClient {
         self.incoming_rx.lock().await.take()
     }
 
-    /// List all services registered on the broker.
+    /// List the names of all services registered on the broker.
+    ///
+    /// A name-only **shim** over the rich `noded.list` reply: parses
+    /// `[ServiceInfo]` and projects `.name`. Because `ServiceInfo`
+    /// dual-parses (a bare name string OR an object), this tolerates both
+    /// an old broker still emitting `["name", …]` and a new broker
+    /// emitting objects — the §9 client-first rollout contract. For full
+    /// provenance use [`Self::service_inventory`].
     pub async fn list_services(&self) -> Result<Vec<String>> {
+        let services = self.service_inventory().await?;
+        Ok(services.into_iter().map(|s| s.name).collect())
+    }
+
+    /// List all registered services with full build provenance
+    /// (version / git_sha / build_time / pid / …) — the rich counterpart
+    /// to [`Self::list_services`]. Version-discovery contract.
+    pub async fn service_inventory(&self) -> Result<Vec<cosmix_amp::ServiceInfo>> {
         let result = self
             .call("noded", "noded.list", serde_json::Value::Null)
             .await?;
-
-        let services: Vec<String> = serde_json::from_value(result)?;
+        let services: Vec<cosmix_amp::ServiceInfo> = serde_json::from_value(result)?;
         Ok(services)
     }
 

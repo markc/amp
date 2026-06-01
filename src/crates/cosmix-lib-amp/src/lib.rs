@@ -1,4 +1,7 @@
 pub mod amp;
+pub mod service_info;
+
+pub use service_info::{NodeInfo, ServiceInfo, SCHEMA_VERSION};
 
 #[cfg(feature = "native")]
 use anyhow::Result;
