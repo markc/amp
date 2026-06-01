@@ -175,6 +175,60 @@ impl<'de> Deserialize<'de> for ServiceInfo {
     }
 }
 
+/// The build provenance a citizen sends in the `noded.register` body.
+/// The broker merges it with the registry key (`name`) and a
+/// broker-stamped `registered_at` to form the stored [`ServiceInfo`].
+/// All fields optional — an old citizen sends an empty body. Built once
+/// per process (so `started_at` is the true process start and survives
+/// reconnects) and cloned into each (re)connect.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegisterProvenance {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_sha: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_dirty: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_time: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
+    #[serde(default, skip_serializing_if = "is_empty_map")]
+    pub meta: serde_json::Map<String, serde_json::Value>,
+}
+
+impl RegisterProvenance {
+    /// Assemble from a `cosmix-lib-buildinfo` `build_info!()`'s parts
+    /// (passed individually so this crate stays free of a buildinfo dep)
+    /// plus the binary name and a process-start timestamp. Stamps the
+    /// current pid. `started_at` should be captured ONCE at process start
+    /// and reused across reconnects.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_parts(
+        binary: &str,
+        version: &str,
+        git_sha: &str,
+        git_dirty: bool,
+        build_time: &str,
+        started_at: String,
+    ) -> Self {
+        Self {
+            binary: Some(binary.to_string()),
+            version: Some(version.to_string()),
+            git_sha: Some(git_sha.to_string()),
+            git_dirty: Some(git_dirty),
+            build_time: Some(build_time.to_string()),
+            pid: Some(std::process::id()),
+            started_at: Some(started_at),
+            meta: serde_json::Map::new(),
+        }
+    }
+}
+
 /// Per-node identity + the local broker's own build, returned by
 /// `noded.info`. Unlike [`ServiceInfo`] (a stored, immutable registry
 /// record) this is **computed on read**, so its dynamic fields

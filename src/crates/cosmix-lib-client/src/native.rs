@@ -99,11 +99,31 @@ pub struct NodedClient {
     /// close the socket — [`close`](Self::close) aborts this to make
     /// teardown deterministic.
     reader_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Build provenance sent in the `noded.register` body (version /
+    /// git_sha / build_time / pid / …). `None` for anonymous clients and
+    /// for citizens that don't supply it; re-sent on every `register()`
+    /// so a reconnect re-publishes it.
+    provenance: Option<cosmix_amp::RegisterProvenance>,
 }
 
 impl NodedClient {
     /// Connect to the broker at the given URL and register as a named service.
     pub async fn connect(service_name: &str, noded_url: &str) -> Result<Self> {
+        Self::connect_with_provenance(service_name, noded_url, None).await
+    }
+
+    /// Connect and register as a named service, sending `provenance`
+    /// (version / git_sha / build_time / pid / …) in the `noded.register`
+    /// body so it surfaces in `noded.list` / `noded.info`. The provenance
+    /// is re-sent on every `register()`, so a supervised reconnect
+    /// re-publishes it (build the value ONCE at process start and clone
+    /// it in, so `started_at` stays the true process start). Version-
+    /// discovery contract.
+    pub async fn connect_with_provenance(
+        service_name: &str,
+        noded_url: &str,
+        provenance: Option<cosmix_amp::RegisterProvenance>,
+    ) -> Result<Self> {
         let (ws_stream, _) = tokio_tungstenite::connect_async(noded_url)
             .await
             .context("failed to connect to broker")?;
@@ -134,6 +154,7 @@ impl NodedClient {
             next_id: AtomicU64::new(1),
             connected,
             reader_handle: Mutex::new(Some(reader_handle)),
+            provenance,
         };
 
         // Register with the broker. On failure the detached reader
@@ -185,6 +206,7 @@ impl NodedClient {
             next_id: AtomicU64::new(1),
             connected,
             reader_handle: Mutex::new(Some(reader_handle)),
+            provenance: None,
         })
     }
 
@@ -596,8 +618,14 @@ impl NodedClient {
     // ── Internal ──
 
     async fn register(&self) -> Result<()> {
-        self.call("noded", "noded.register", serde_json::Value::Null)
-            .await?;
+        // Send build provenance in the register body when present, so it
+        // surfaces in noded.list/noded.info; re-sent on every register so
+        // a reconnect re-publishes it. Absent → empty body (old citizen).
+        let body = match &self.provenance {
+            Some(p) => serde_json::to_value(p).unwrap_or(serde_json::Value::Null),
+            None => serde_json::Value::Null,
+        };
+        self.call("noded", "noded.register", body).await?;
         Ok(())
     }
 

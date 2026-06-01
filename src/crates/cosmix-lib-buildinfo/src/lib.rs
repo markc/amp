@@ -93,6 +93,18 @@ macro_rules! build_info {
     };
 }
 
+/// Current wall-clock time as RFC3339 UTC — a runtime helper for a
+/// citizen's `started_at` provenance, so daemons need no `chrono` dep.
+/// Unlike the build-time stamp this ignores `SOURCE_DATE_EPOCH` (it is a
+/// live timestamp, not a reproducible build artifact).
+pub fn now_rfc3339() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    rfc3339_utc(secs)
+}
+
 // ── build.rs helper ──────────────────────────────────────────────────
 
 /// Emit `cargo:rustc-env=COSMIX_{GIT_SHA,GIT_DIRTY,BUILD_TIME}` for the
