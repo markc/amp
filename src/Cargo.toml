@@ -18,6 +18,7 @@ members = [
     "crates/cosmix-lib-amp",
     "crates/cosmix-lib-buildinfo",
     "crates/cosmix-lib-client",
+    "crates/cosmix-lib-log",
     "crates/cosmix-lib-props-core",
 ]
 
@@ -35,12 +36,19 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 tokio = { version = "1", features = ["full"] }
 libc = "0.2"
 tokio-tungstenite = "0.26"
 futures-util = "0.3"
 rand = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+metrics = "0.24"
+metrics-util = "0.18"
+metrics-exporter-prometheus = { version = "0.18", default-features = false, features = ["http-listener"] }
+rustc-hash = "2"
 
 [profile.release]
 strip = true
