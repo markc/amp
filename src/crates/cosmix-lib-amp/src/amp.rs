@@ -22,6 +22,25 @@ use anyhow::Result;
 /// The minimum valid AMP message — heartbeat, ACK, or keepalive.
 pub const EMPTY_MESSAGE: &str = "---\n---\n";
 
+/// Maximum size of a single AMP message read from a local transport
+/// (the native Unix-socket port). A message larger than this is rejected
+/// rather than buffered in full, bounding a local memory-exhaustion DoS
+/// (`read_to_end` is otherwise unbounded). 16 MiB is generous headroom
+/// over the ~1 MiB norm for the largest legitimate AMP bodies
+/// (subscription snapshots, stats — see `MAX_SNAPSHOT_BYTES`). The
+/// mesh-facing WebSocket transport is bounded separately by the
+/// broker's configured frame/message caps.
+pub const MAX_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
+
+/// Maximum number of header lines parsed from a single AMP message.
+/// Bounds the `BTreeMap` a hostile frame can force the parser to build —
+/// a 16 MiB frame of 1-byte header lines would otherwise allocate
+/// millions of map entries. A legitimate AMP message carries a handful
+/// of headers; this leaves four orders of magnitude of slack. Excess
+/// lines are recorded in the [`ParseReport`] (so `parse_strict` rejects
+/// them) and parsing stops.
+pub const MAX_HEADERS: usize = 4096;
+
 /// A parsed AMP message: ordered headers + optional body.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AmpMessage {
@@ -254,10 +273,28 @@ pub fn parse_lenient(raw: &str) -> Result<(AmpMessage, ParseReport)> {
     let mut skipped_lines = Vec::new();
     let mut json_parse_errors = Vec::new();
 
+    // Count every non-empty line we actually process — NOT distinct map
+    // entries. Each processed line can push to `headers`, `skipped_lines`,
+    // or `json_parse_errors`; capping the map's `len()` would let
+    // duplicate keys (which overwrite) or repeated malformed/JSON-error
+    // lines (which grow the report vecs) bypass the bound. Capping
+    // processed lines bounds all three together.
+    let mut processed = 0usize;
     for (idx, line) in header_block.lines().enumerate() {
         if line.is_empty() {
             continue;
         }
+        // Bound the work a hostile frame can force. Beyond the cap, record
+        // the overflow (so strict callers reject) and stop — the body is
+        // already split out above.
+        if processed >= MAX_HEADERS {
+            skipped_lines.push((
+                idx + 1,
+                format!("header line count exceeds {MAX_HEADERS}; remaining lines skipped"),
+            ));
+            break;
+        }
+        processed += 1;
         match line.split_once(": ") {
             Some((k, v)) => {
                 let key = k.trim().to_string();
@@ -352,10 +389,14 @@ mod transport {
     pub async fn read_from_stream(stream: &mut tokio::net::UnixStream) -> Result<AmpMessage> {
         let mut buf = Vec::with_capacity(4096);
 
-        // Read with timeout to prevent hanging on misbehaving clients
+        // Read with a timeout (hung clients) AND a byte cap (memory DoS):
+        // `take` one byte past the limit so an over-cap frame still reads
+        // enough to be detected, then reject. Without the cap, a local
+        // peer could force an unbounded `read_to_end` allocation.
+        let mut limited = stream.take(MAX_MESSAGE_BYTES as u64 + 1);
         match tokio::time::timeout(
             std::time::Duration::from_secs(10),
-            stream.read_to_end(&mut buf),
+            limited.read_to_end(&mut buf),
         )
         .await
         {
@@ -366,6 +407,9 @@ mod transport {
 
         if buf.is_empty() {
             anyhow::bail!("Empty AMP message (no data received)");
+        }
+        if buf.len() > MAX_MESSAGE_BYTES {
+            anyhow::bail!("AMP message exceeds {MAX_MESSAGE_BYTES} byte limit");
         }
 
         let raw = String::from_utf8(buf)?;
@@ -1208,5 +1252,56 @@ mod tests {
     #[test]
     fn error_message_unknown_when_empty() {
         assert_eq!(AmpMessage::new().error_message(), "unknown error");
+    }
+
+    #[test]
+    fn header_count_is_capped() {
+        // A frame with far more header lines than MAX_HEADERS must not
+        // build an unbounded map: parsing stops at the cap, records the
+        // overflow, and strict parse rejects it.
+        let mut raw = String::from("---\n");
+        for i in 0..(MAX_HEADERS + 50) {
+            raw.push_str(&format!("k{i}: v\n"));
+        }
+        raw.push_str("---\n");
+        let (msg, report) = parse_lenient(&raw).unwrap();
+        assert_eq!(
+            msg.headers.len(),
+            MAX_HEADERS,
+            "header map is bounded by MAX_HEADERS"
+        );
+        assert!(
+            !report.is_empty(),
+            "overflow is recorded so strict callers reject"
+        );
+        assert!(parse_strict(&raw).is_err(), "strict parse rejects an over-cap frame");
+    }
+
+    #[test]
+    fn duplicate_keys_do_not_bypass_cap() {
+        // Duplicate keys overwrite in the map (len stays 1) and malformed
+        // lines grow the report vecs — the cap must count PROCESSED LINES,
+        // not map entries, or these bypass the bound entirely.
+        let mut raw = String::from("---\n");
+        for _ in 0..(MAX_HEADERS + 100) {
+            raw.push_str("dup: v\n"); // same key every time → map len 1
+        }
+        raw.push_str("---\n");
+        let (msg, report) = parse_lenient(&raw).unwrap();
+        assert_eq!(msg.headers.len(), 1, "duplicate keys collapse to one entry");
+        assert!(
+            report.skipped_lines.iter().any(|(_, l)| l.contains("exceeds")),
+            "the line-count cap tripped despite the map staying small"
+        );
+    }
+
+    #[test]
+    fn headers_under_cap_parse_fully() {
+        // A normal handful-of-headers message is unaffected by the cap.
+        let raw = "---\ncommand: get\nrc: 0\nfrom: node1\n---\nbody";
+        let (msg, report) = parse_lenient(raw).unwrap();
+        assert_eq!(msg.headers.len(), 3);
+        assert!(report.is_empty());
+        assert_eq!(msg.body, "body");
     }
 }

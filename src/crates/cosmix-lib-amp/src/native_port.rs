@@ -365,9 +365,14 @@ pub async fn call_port(
     stream.write_all(&msg.to_bytes()).await?;
     stream.shutdown().await?;
 
-    // Read AMP response
+    // Read AMP response (byte-capped to bound memory on a misbehaving
+    // or hostile port; see `amp::MAX_MESSAGE_BYTES`).
     let mut buf = Vec::new();
-    stream.read_to_end(&mut buf).await?;
+    let mut limited = stream.take(amp::MAX_MESSAGE_BYTES as u64 + 1);
+    limited.read_to_end(&mut buf).await?;
+    if buf.len() > amp::MAX_MESSAGE_BYTES {
+        anyhow::bail!("AMP response exceeds {} byte limit", amp::MAX_MESSAGE_BYTES);
+    }
     let raw = String::from_utf8(buf)?;
     let resp = amp::parse(&raw)?;
 
