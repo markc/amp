@@ -232,6 +232,26 @@ impl NodedClient {
         command: &str,
         args: serde_json::Value,
     ) -> Result<serde_json::Value> {
+        // Compat wrapper: an application `rc >= 10` reply collapses back into
+        // an `Err` (its message), preserving the historic conflated contract.
+        // Callers that must distinguish transport from application errors use
+        // `call_typed` (the Mix `$rc`-band contract).
+        match self.call_typed(to, command, args).await? {
+            cosmix_amp::PortReply::Ok { value, .. } => Ok(value),
+            cosmix_amp::PortReply::AppError { message, .. } => anyhow::bail!("{}", message),
+        }
+    }
+
+    /// Like [`call`], but the `Result::Err` is ONLY a transport failure
+    /// (send_raw, broker-close, 60s timeout) — a peer reply with `rc >= 10`
+    /// is `Ok(PortReply::AppError { rc, message })`, so a caller can map
+    /// transport → `$rc = -1` and application error → `$rc = rc` distinctly.
+    pub async fn call_typed(
+        &self,
+        to: &str,
+        command: &str,
+        args: serde_json::Value,
+    ) -> Result<cosmix_amp::PortReply> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed).to_string();
 
         // Serialize the body BEFORE registering in `pending` — a
@@ -294,25 +314,34 @@ impl NodedClient {
         // pointless lock + no-op remove in Drop.
         guard.disarm();
 
-        // Check for error
+        // A peer `rc >= 10` is an APPLICATION error (a real status), NOT a
+        // transport failure — surface it as `Ok(AppError)` so the caller keeps
+        // the rc (was an `Err`, conflating it with a broken connection).
         if let Some(rc) = response.get("rc") {
             let rc: u8 = rc.parse().unwrap_or(0);
             if rc >= 10 {
-                anyhow::bail!("{}", response.error_message());
+                return Ok(cosmix_amp::PortReply::AppError {
+                    rc,
+                    message: response.error_message(),
+                });
             }
         }
 
-        if response.body.is_empty() {
-            Ok(serde_json::Value::Null)
+        // Success rc (0 or RC_WARNING) — carry the exact rc so a warning is
+        // not flattened to 0.
+        let rc: u8 = response.get("rc").and_then(|s| s.parse().ok()).unwrap_or(0);
+        let value = if response.body.is_empty() {
+            serde_json::Value::Null
         } else {
             // Most cosmix services return JSON bodies, but `spec.get` and
             // similar surface-the-body-verbatim commands return arbitrary
             // payloads (e.g. markdown). Fall back to a String value rather
             // than bailing — callers that need parsed JSON can serde-decode
             // the string themselves.
-            Ok(serde_json::from_str(&response.body)
-                .unwrap_or_else(|_| serde_json::Value::String(response.body.clone())))
-        }
+            serde_json::from_str(&response.body)
+                .unwrap_or_else(|_| serde_json::Value::String(response.body.clone()))
+        };
+        Ok(cosmix_amp::PortReply::Ok { rc, value })
     }
 
     /// Like [`call`] but with caller-supplied headers and an optional

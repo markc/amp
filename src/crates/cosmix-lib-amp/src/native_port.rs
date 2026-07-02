@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 use crate::amp;
 use crate::{
-    CommandEntry, CommandFn, PortEvent, PortRequest, PortResponse, RC_WARNING, ScriptInfo,
+    CommandEntry, CommandFn, PortEvent, PortRequest, PortResponse, RC_ERROR, ScriptInfo,
 };
 
 // ── Port builder ──
@@ -352,6 +352,44 @@ pub async fn call_port(
     command: &str,
     args: serde_json::Value,
 ) -> Result<serde_json::Value> {
+    // Preserve the original conflated contract for existing callers: an
+    // application `rc >= 10` reply becomes an `Err` (the error message), a
+    // transport failure also an `Err`. Callers that must distinguish the two
+    // use `call_port_typed` (added for the Mix `$rc`-band contract).
+    match call_port_typed(socket_path, command, args).await? {
+        PortReply::Ok { value, .. } => Ok(value),
+        PortReply::AppError { message, .. } => anyhow::bail!("{}", message),
+    }
+}
+
+/// The two OUTCOMES of a port call that actually reached the peer, kept
+/// distinct from a TRANSPORT failure (which is the `Err` of the enclosing
+/// `Result`). Lets a caller map "the peer answered with rc>=10" (an
+/// application error, a real status) separately from "I couldn't connect /
+/// read / parse" (a transport failure) — the discrimination the Mix `$rc`
+/// bands need (`>= 10` app vs `-1` transport). See `call_port_typed`.
+#[derive(Debug, Clone)]
+pub enum PortReply {
+    /// Peer replied with a SUCCESS rc (`< RC_ERROR`, i.e. `0`, the warning
+    /// `5`, or any sub-error status); `rc` is the exact value (so a warning
+    /// `5` is not flattened to `0`) and `value` is the decoded body (`Null`
+    /// when empty).
+    Ok { rc: u8, value: serde_json::Value },
+    /// Peer replied `rc >= 10` (an application error). `rc` is the exact
+    /// status; `message` is the peer's error text (`error_message()`).
+    AppError { rc: u8, message: String },
+}
+
+/// Like [`call_port`], but the `Result::Err` is ONLY a transport failure
+/// (connect / write / read / size-cap / UTF-8 / parse) — a peer reply with
+/// `rc >= 10` is `Ok(PortReply::AppError { rc, message })`, NOT an `Err`. So
+/// a caller can map transport → one band and application-error → another
+/// (the Mix handler maps them to `$rc = -1` and `$rc = rc` respectively).
+pub async fn call_port_typed(
+    socket_path: &str,
+    command: &str,
+    args: serde_json::Value,
+) -> Result<PortReply> {
     let mut stream = tokio::net::UnixStream::connect(socket_path).await?;
 
     // Build AMP request
@@ -377,13 +415,115 @@ pub async fn call_port(
     let resp = amp::parse(&raw)?;
 
     let rc: u8 = resp.get("rc").and_then(|s| s.parse().ok()).unwrap_or(0);
-    if rc == 0 || rc == RC_WARNING {
-        if resp.body.is_empty() {
-            Ok(serde_json::Value::Null)
+    // `rc < RC_ERROR` (< 10) is the SUCCESS band — 0, the warning 5, and any
+    // other sub-error status — matching NodedClient::call_typed (which treats
+    // only `rc >= 10` as an application error). The two typed paths MUST agree
+    // on the mid-band (1-9), or the same reply would classify differently over
+    // a local socket vs the broker.
+    if rc < RC_ERROR {
+        let value = if resp.body.is_empty() {
+            serde_json::Value::Null
         } else {
-            Ok(serde_json::from_str(&resp.body)?)
-        }
+            serde_json::from_str(&resp.body)?
+        };
+        Ok(PortReply::Ok { rc, value })
     } else {
-        anyhow::bail!("{}", resp.error_message())
+        Ok(PortReply::AppError {
+            rc,
+            message: resp.error_message(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod call_port_typed_tests {
+    use super::*;
+    use crate::amp::AmpMessage;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::UnixListener;
+
+    /// Spawn a one-shot AMP port that replies with the given `rc`/`body`,
+    /// returning its socket path. The listener accepts a single connection,
+    /// drains the request to EOF (the client shutdown()s its write half),
+    /// writes the canned reply, and closes.
+    async fn one_shot_port(rc: &str, body: &str) -> (std::path::PathBuf, tokio::task::JoinHandle<()>) {
+        let dir = std::env::temp_dir();
+        // Unique-ish name without Math.random: pid + a monotonic-ish nanos.
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = dir.join(format!("cosmix-cpt-{}-{}.sock", std::process::id(), nanos));
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        let (rc, body) = (rc.to_string(), body.to_string());
+        let handle = tokio::spawn(async move {
+            if let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = Vec::new();
+                let mut limited = (&mut stream).take(64 * 1024);
+                let _ = limited.read_to_end(&mut buf).await;
+                let mut reply = AmpMessage::new();
+                reply.set("rc", &rc);
+                reply.body = body;
+                let _ = stream.write_all(&reply.to_bytes()).await;
+                let _ = stream.shutdown().await;
+            }
+        });
+        (path, handle)
+    }
+
+    #[tokio::test]
+    async fn typed_success_is_ok_value() {
+        let (path, h) = one_shot_port("0", r#"{"pong":true}"#).await;
+        let out = call_port_typed(path.to_str().unwrap(), "ping", serde_json::Value::Null)
+            .await
+            .expect("transport ok");
+        match out {
+            PortReply::Ok { value, .. } => assert_eq!(value, serde_json::json!({"pong": true})),
+            other => panic!("expected Ok, got {other:?}"),
+        }
+        h.await.unwrap();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn typed_app_error_preserves_rc_not_err() {
+        // A peer rc>=10 reply is an APPLICATION error → Ok(AppError), NOT the
+        // transport Err (the whole point of the typed variant).
+        let (path, h) = one_shot_port("10", r#"{"error":"boom"}"#).await;
+        let out = call_port_typed(path.to_str().unwrap(), "do", serde_json::Value::Null)
+            .await
+            .expect("app error must NOT be a transport Err");
+        match out {
+            PortReply::AppError { rc, message } => {
+                assert_eq!(rc, 10);
+                assert!(message.contains("boom"), "message: {message}");
+            }
+            other => panic!("expected AppError, got {other:?}"),
+        }
+        h.await.unwrap();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn typed_connect_refused_is_transport_err() {
+        // No socket at this path → a pure transport failure → Err.
+        let path = std::env::temp_dir().join("cosmix-cpt-nonexistent.sock");
+        let _ = std::fs::remove_file(&path);
+        let r = call_port_typed(path.to_str().unwrap(), "x", serde_json::Value::Null).await;
+        assert!(r.is_err(), "a missing socket must be a transport Err");
+    }
+
+    #[tokio::test]
+    async fn compat_call_port_collapses_app_error_to_err() {
+        // The legacy wrapper still turns an app rc>=10 into an Err (message).
+        let (path, h) = one_shot_port("10", r#"{"error":"legacy"}"#).await;
+        let e = call_port(path.to_str().unwrap(), "do", serde_json::Value::Null)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("legacy"), "err: {e}");
+        h.await.unwrap();
+        let _ = std::fs::remove_file(&path);
     }
 }

@@ -425,6 +425,25 @@ impl SupervisedClient {
             .map_err(SupervisedError::Transport)
     }
 
+    /// See [`NodedClient::call_typed`]. A gate failure (ShuttingDown /
+    /// Disconnected) or an inner transport error is `Err(SupervisedError)`;
+    /// a peer `rc >= 10` reply is `Ok(PortReply::AppError { rc, message })`,
+    /// so a caller can map transport vs application error to distinct `$rc`
+    /// bands (the Mix serve-mode rc-band contract).
+    pub async fn call_typed(
+        &self,
+        to: &str,
+        command: &str,
+        args: serde_json::Value,
+    ) -> Result<cosmix_amp::PortReply, SupervisedError> {
+        self.gate()?;
+        self.client()
+            .await
+            .call_typed(to, command, args)
+            .await
+            .map_err(SupervisedError::Transport)
+    }
+
     /// See [`NodedClient::send`].
     pub async fn send(
         &self,

@@ -28,6 +28,12 @@
 mod types;
 pub use types::IncomingCommand;
 
+// Re-export the typed port-call outcome so consumers of `call_typed`
+// (NodedClient / SupervisedClient) get the type from this crate rather than
+// reaching into `cosmix-lib-amp` directly.
+#[cfg(not(target_arch = "wasm32"))]
+pub use cosmix_amp::PortReply;
+
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 #[cfg(not(target_arch = "wasm32"))]
