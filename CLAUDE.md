@@ -45,6 +45,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 The zero-warning baseline is enforced: any new clippy warning is a regression.
 
+**On cachyos, wrap `cargo build`/`cargo test` in `memguard`** (`~/.mc/_bin/memguard.mix`,
+on PATH) — caps the build in a `MemoryMax=48G` systemd user scope so a runaway parallel
+build OOMs its own scope, not the desktop (an unguarded overnight build caused the
+2026-07-07 kernel OOM storm). Exit 137/143 = cgroup OOM → retry with `-j8`.
+
 ## Internal dep graph
 
 - `cosmix-lib-amp` → no internal deps.
