@@ -50,7 +50,10 @@ metrics-util = "0.18"
 metrics-exporter-prometheus = { version = "0.18", default-features = false, features = ["http-listener"] }
 rustc-hash = "2"
 
+# Thin LTO (was fat + codegen-units=1, 2026-07-07): keeps ~all of fat's runtime
+# perf for these I/O-bound daemons, but links parallel + light — fat LTO links
+# were the per-binary multi-GB memory spikes behind the 2026-07-07 OOM storm,
+# and they're the one step sccache can never cache.
 [profile.release]
 strip = true
-lto = true
-codegen-units = 1
+lto = "thin"
