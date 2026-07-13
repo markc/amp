@@ -47,7 +47,9 @@
 use crate::stats::classify::sensitivity_of;
 use crate::stats::labels_hash::labels_hash;
 use crate::stats::types::LabelSensitivity;
-use metrics::{Counter, Gauge, Histogram, Key, KeyName, Label, Level, Metadata, Recorder, SharedString, Unit};
+use metrics::{
+    Counter, Gauge, Histogram, Key, KeyName, Label, Level, Metadata, Recorder, SharedString, Unit,
+};
 use metrics_exporter_prometheus::{PrometheusHandle, PrometheusRecorder};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -59,8 +61,11 @@ use std::sync::Arc;
 /// Prometheus recorder does not consume `Metadata` for storage, so
 /// supplying a fixed `Substrate / INFO` value is sufficient and
 /// consistent across periods.
-const SUBSTRATE_META: Metadata<'static> =
-    Metadata::new("cosmix_log::stats", Level::INFO, Some("cosmix_lib_log::stats"));
+const SUBSTRATE_META: Metadata<'static> = Metadata::new(
+    "cosmix_log::stats",
+    Level::INFO,
+    Some("cosmix_lib_log::stats"),
+);
 
 /// Redaction-first wrapper around a `PrometheusRecorder`. Held by the
 /// substrate `StatsRecorder` (one slot, set via
@@ -110,7 +115,10 @@ impl PrometheusChild {
             .map(|l| (l.key().to_string(), l.value().to_string()))
             .collect();
         let digest = labels_hash(&map);
-        Key::from_parts(key.name().to_string(), vec![Label::new("labels_hash", digest)])
+        Key::from_parts(
+            key.name().to_string(),
+            vec![Label::new("labels_hash", digest)],
+        )
     }
 
     pub(crate) fn register_counter(&self, key: &Key, metadata: &Metadata<'_>) -> Counter {
@@ -128,15 +136,30 @@ impl PrometheusChild {
         self.inner.register_histogram(&redacted, metadata)
     }
 
-    pub(crate) fn describe_counter(&self, name: KeyName, unit: Option<Unit>, description: SharedString) {
+    pub(crate) fn describe_counter(
+        &self,
+        name: KeyName,
+        unit: Option<Unit>,
+        description: SharedString,
+    ) {
         self.inner.describe_counter(name, unit, description);
     }
 
-    pub(crate) fn describe_gauge(&self, name: KeyName, unit: Option<Unit>, description: SharedString) {
+    pub(crate) fn describe_gauge(
+        &self,
+        name: KeyName,
+        unit: Option<Unit>,
+        description: SharedString,
+    ) {
         self.inner.describe_gauge(name, unit, description);
     }
 
-    pub(crate) fn describe_histogram(&self, name: KeyName, unit: Option<Unit>, description: SharedString) {
+    pub(crate) fn describe_histogram(
+        &self,
+        name: KeyName,
+        unit: Option<Unit>,
+        description: SharedString,
+    ) {
         self.inner.describe_histogram(name, unit, description);
     }
 

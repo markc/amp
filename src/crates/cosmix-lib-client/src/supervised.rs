@@ -142,7 +142,10 @@ impl std::fmt::Display for SupervisedError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SupervisedError::Disconnected => {
-                write!(f, "broker disconnected (no outbound queue; caller must retry)")
+                write!(
+                    f,
+                    "broker disconnected (no outbound queue; caller must retry)"
+                )
             }
             SupervisedError::ShuttingDown => write!(f, "supervised client is shutting down"),
             SupervisedError::InitialConnectFailed { attempts, source } => write!(
@@ -673,7 +676,8 @@ impl SupervisedClient {
     /// `Drop` and as the defensive stop; WS5's graceful path uses
     /// [`deregister`](Self::deregister).
     pub async fn shutdown(&self) {
-        self.state.store(ConnState::ShuttingDown as u8, Ordering::SeqCst);
+        self.state
+            .store(ConnState::ShuttingDown as u8, Ordering::SeqCst);
         let _ = self.shutdown_tx.send(true);
         if let Some(handle) = self.supervisor.lock().await.take() {
             let _ = handle.await;
@@ -689,7 +693,8 @@ impl SupervisedClient {
     /// [`SupervisedError::Disconnected`] — the caller (WS5) treats that
     /// as "already gone, proceed to exit".
     pub async fn deregister(&self) -> Result<(), SupervisedError> {
-        self.state.store(ConnState::ShuttingDown as u8, Ordering::SeqCst);
+        self.state
+            .store(ConnState::ShuttingDown as u8, Ordering::SeqCst);
         let _ = self.shutdown_tx.send(true);
         // Join the supervisor FIRST. Once `handle.await` returns the
         // supervisor is definitively dead and `inner` can no longer be

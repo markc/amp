@@ -3,7 +3,9 @@
 //! integration test that owns a fresh process — see `init_smoke.rs`.
 
 use clap::Parser;
-use cosmix_log::{LogDefaults, LogFormat, LogLevel, LogOpts, OnOff, RotationMode, StatsOpts, TriState};
+use cosmix_log::{
+    LogDefaults, LogFormat, LogLevel, LogOpts, OnOff, RotationMode, StatsOpts, TriState,
+};
 
 #[derive(Parser, Debug)]
 struct Cmd {
@@ -245,8 +247,14 @@ fn with_log_file_retargets_default_stats_file() {
         .with_stats_file("/old/log/cosmix-maild.stats.jsonl")
         .with_log_file("/var/log/cosmix");
     let stats = d.stats_file.as_ref().expect("stats_file is retargeted");
-    assert_eq!(stats, std::path::Path::new("/var/log/cosmix/cosmix-maild.stats.jsonl"));
-    assert_eq!(d.log_file.as_deref(), Some(std::path::Path::new("/var/log/cosmix")));
+    assert_eq!(
+        stats,
+        std::path::Path::new("/var/log/cosmix/cosmix-maild.stats.jsonl")
+    );
+    assert_eq!(
+        d.log_file.as_deref(),
+        Some(std::path::Path::new("/var/log/cosmix"))
+    );
 }
 
 #[test]
@@ -297,7 +305,10 @@ fn defaults_stats_setters_chain() {
         .with_stats_prometheus_listen(listen);
     assert!(d.stats);
     assert_eq!(d.stats_interval, 0);
-    assert_eq!(d.stats_file.as_deref(), Some(std::path::Path::new("/tmp/stats")));
+    assert_eq!(
+        d.stats_file.as_deref(),
+        Some(std::path::Path::new("/tmp/stats"))
+    );
     assert_eq!(d.stats_byte_budget, 64);
     assert_eq!(d.stats_prometheus_listen, Some(listen));
 }

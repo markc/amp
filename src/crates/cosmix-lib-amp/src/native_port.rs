@@ -10,9 +10,7 @@ use tokio::net::UnixListener;
 use tokio::sync::mpsc;
 
 use crate::amp;
-use crate::{
-    CommandEntry, CommandFn, PortEvent, PortRequest, PortResponse, RC_ERROR, ScriptInfo,
-};
+use crate::{CommandEntry, CommandFn, PortEvent, PortRequest, PortResponse, RC_ERROR, ScriptInfo};
 
 // ── Port builder ──
 
@@ -446,7 +444,10 @@ mod call_port_typed_tests {
     /// returning its socket path. The listener accepts a single connection,
     /// drains the request to EOF (the client shutdown()s its write half),
     /// writes the canned reply, and closes.
-    async fn one_shot_port(rc: &str, body: &str) -> (std::path::PathBuf, tokio::task::JoinHandle<()>) {
+    async fn one_shot_port(
+        rc: &str,
+        body: &str,
+    ) -> (std::path::PathBuf, tokio::task::JoinHandle<()>) {
         let dir = std::env::temp_dir();
         // Unique-ish name without Math.random: pid + a monotonic-ish nanos.
         let nanos = std::time::SystemTime::now()

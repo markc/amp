@@ -96,10 +96,10 @@
 use std::collections::BTreeMap;
 
 use cosmix_client::IncomingCommand;
-use serde_json::{json, Map as JsonMap, Value as JsonValue};
+use serde_json::{Map as JsonMap, Value as JsonValue, json};
 
 use crate::stats::dispatch::{
-    snapshot_dispatch, LabelFilter, MetricPattern, SnapshotError, SnapshotRequest,
+    LabelFilter, MetricPattern, SnapshotError, SnapshotRequest, snapshot_dispatch,
 };
 use crate::stats::recorder::StatsRecorder;
 use crate::stats::types::{
@@ -247,7 +247,7 @@ fn parse_metric_glob(s: &str) -> Result<MetricPattern, String> {
             if let Some(prefix) = s.strip_suffix('*') {
                 if prefix.is_empty() {
                     return Err(
-                        "metric `*` matches every family — omit the header instead".to_string(),
+                        "metric `*` matches every family — omit the header instead".to_string()
                     );
                 }
                 Ok(MetricPattern::Prefix(prefix.to_string()))
@@ -257,7 +257,7 @@ fn parse_metric_glob(s: &str) -> Result<MetricPattern, String> {
                 // on both sides), but check defensively.
                 if suffix.is_empty() {
                     return Err(
-                        "metric `*` matches every family — omit the header instead".to_string(),
+                        "metric `*` matches every family — omit the header instead".to_string()
                     );
                 }
                 Ok(MetricPattern::Suffix(suffix.to_string()))
@@ -298,11 +298,8 @@ fn parse_metric_glob(s: &str) -> Result<MetricPattern, String> {
 /// expressed directly). It cannot bypass the probe-oracle gate. See
 /// the regression test `labels_filter_duplicate_keys_last_wins`.
 fn parse_labels_filter(s: &str) -> Result<Vec<LabelFilter>, String> {
-    let parsed: JsonMap<String, JsonValue> = serde_json::from_str(s).map_err(|e| {
-        format!(
-            "labels must be a JSON object (e.g. {{\"verdict\":\"ham\"}}): {e}"
-        )
-    })?;
+    let parsed: JsonMap<String, JsonValue> = serde_json::from_str(s)
+        .map_err(|e| format!("labels must be a JSON object (e.g. {{\"verdict\":\"ham\"}}): {e}"))?;
     let mut filters = Vec::with_capacity(parsed.len());
     for (key, value) in parsed {
         match value {
@@ -578,9 +575,11 @@ mod tests {
         assert_eq!(rc, RC_OK);
         let v = parse_body(&body);
         let metrics = v["metrics"].as_array().expect("metrics array");
-        assert!(metrics
-            .iter()
-            .any(|m| m["name"] == "amp_prefix_match_metric"));
+        assert!(
+            metrics
+                .iter()
+                .any(|m| m["name"] == "amp_prefix_match_metric")
+        );
     }
 
     #[test]
@@ -592,9 +591,11 @@ mod tests {
         assert_eq!(rc, RC_OK);
         let v = parse_body(&body);
         let metrics = v["metrics"].as_array().expect("metrics array");
-        assert!(metrics
-            .iter()
-            .any(|m| m["name"] == "amp_suffix_match_total"));
+        assert!(
+            metrics
+                .iter()
+                .any(|m| m["name"] == "amp_suffix_match_total")
+        );
     }
 
     #[test]
@@ -609,7 +610,10 @@ mod tests {
         let v = parse_body(&body);
         assert_eq!(v["error"], "ParseError");
         let reason = v["reason"].as_str().expect("reason string");
-        assert!(reason.contains("only one `*`"), "reason cites two-star shape: {reason}");
+        assert!(
+            reason.contains("only one `*`"),
+            "reason cites two-star shape: {reason}"
+        );
     }
 
     #[test]
@@ -653,11 +657,13 @@ mod tests {
         let (rc, body) = handle_snapshot_amp(&cmd, &recorder, &caps_host());
         assert_eq!(rc, RC_OK);
         let v = parse_body(&body);
-        assert!(v["metrics"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|m| m["name"] == "amp_labels_keyequals_metric"));
+        assert!(
+            v["metrics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|m| m["name"] == "amp_labels_keyequals_metric")
+        );
     }
 
     #[test]
@@ -737,7 +743,10 @@ mod tests {
         let (rc, body) = handle_snapshot_amp(&cmd, &recorder, &caps_operator());
         // HasKey on Restricted at operator-class admits; KeyEquals
         // would have been rejected here.
-        assert_eq!(rc, RC_OK, "duplicate-key collapse to HasKey is admitted: {body}");
+        assert_eq!(
+            rc, RC_OK,
+            "duplicate-key collapse to HasKey is admitted: {body}"
+        );
         let v = parse_body(&body);
         let family = v["metrics"]
             .as_array()
@@ -793,11 +802,13 @@ mod tests {
         let (rc, body) = handle_snapshot_amp(&cmd, &recorder, &caps_operator());
         assert_eq!(rc, RC_OK);
         let v = parse_body(&body);
-        assert!(v["metrics"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|m| m["name"] == "amp_labels_hash_csv_metric"));
+        assert!(
+            v["metrics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|m| m["name"] == "amp_labels_hash_csv_metric")
+        );
     }
 
     #[test]
@@ -817,11 +828,13 @@ mod tests {
         let (rc, body) = handle_snapshot_amp(&cmd, &recorder, &caps_operator());
         assert_eq!(rc, RC_OK);
         let v = parse_body(&body);
-        assert!(v["metrics"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|m| m["name"] == "amp_labels_hash_trailing_metric"));
+        assert!(
+            v["metrics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|m| m["name"] == "amp_labels_hash_trailing_metric")
+        );
     }
 
     #[test]
@@ -905,7 +918,10 @@ mod tests {
         let v = parse_body(&body);
         let ts = v["captured_at"].as_str().expect("captured_at string");
         // Shape: YYYY-MM-DDTHH:MM:SS.sssZ — Z-suffix (UTC), .sss millis.
-        assert!(ts.ends_with('Z'), "captured_at must be Z-suffixed UTC: {ts}");
+        assert!(
+            ts.ends_with('Z'),
+            "captured_at must be Z-suffixed UTC: {ts}"
+        );
         assert!(
             ts.contains('.'),
             "captured_at must carry millisecond fraction: {ts}"
@@ -950,10 +966,8 @@ mod tests {
             // distinguishing bytes go into the value (variable).
             let key = "k";
             let label = Label::new(key, format!("{big}-{i}"));
-            let metric_key = Key::from_parts(
-                SharedString::const_str("amp_too_large_metric"),
-                vec![label],
-            );
+            let metric_key =
+                Key::from_parts(SharedString::const_str("amp_too_large_metric"), vec![label]);
             let counter: Counter = recorder.register_counter(
                 &metric_key,
                 &metrics::Metadata::new("amp_too_large_metric", metrics::Level::INFO, None),

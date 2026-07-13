@@ -173,10 +173,7 @@ pub struct LogReloadHandle {
 impl LogReloadHandle {
     /// Swap the active `EnvFilter`. Returns `Err` if the subscriber was
     /// torn down.
-    pub fn reload_filter(
-        &self,
-        filter: tracing_subscriber::EnvFilter,
-    ) -> Result<(), LogError> {
+    pub fn reload_filter(&self, filter: tracing_subscriber::EnvFilter) -> Result<(), LogError> {
         self.inner
             .reload(filter)
             .map_err(|e| LogError::Reload(e.to_string()))

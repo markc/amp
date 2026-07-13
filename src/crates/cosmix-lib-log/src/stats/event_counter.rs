@@ -81,10 +81,10 @@
 //! cost are both negligible at admitted-event rates.
 //! Codex slice-4c round-2 NIT.
 
-use metrics::{counter, Label};
+use metrics::{Label, counter};
 use tracing::{Event, Subscriber};
-use tracing_subscriber::layer::Context;
 use tracing_subscriber::Layer;
+use tracing_subscriber::layer::Context;
 
 /// Counter name written by this layer (plan §3 "built-in
 /// counters" group).
@@ -260,7 +260,11 @@ mod tests {
             .iter()
             .find(|m| m.name == EVENT_COUNTER_NAME)
             .expect("event counter family present after emitted events");
-        assert_eq!(family.series.len(), 2, "two series for two distinct (level, target_root) tuples");
+        assert_eq!(
+            family.series.len(),
+            2,
+            "two series for two distinct (level, target_root) tuples"
+        );
 
         let by_labels: std::collections::HashMap<_, _> = family
             .series
@@ -283,7 +287,15 @@ mod tests {
                 )
             })
             .collect();
-        assert_eq!(by_labels.get(&("error".into(), "cosmix_maild".into())).copied(), Some(2));
-        assert_eq!(by_labels.get(&("info".into(), "mix".into())).copied(), Some(2));
+        assert_eq!(
+            by_labels
+                .get(&("error".into(), "cosmix_maild".into()))
+                .copied(),
+            Some(2)
+        );
+        assert_eq!(
+            by_labels.get(&("info".into(), "mix".into())).copied(),
+            Some(2)
+        );
     }
 }

@@ -154,7 +154,9 @@ impl NodedClient {
 
         self.send_raw(&msg).await?;
 
-        let response = rx.await.context("broker connection closed before response")?;
+        let response = rx
+            .await
+            .context("broker connection closed before response")?;
         guard.disarm();
 
         if let Some(rc) = response.get("rc") {

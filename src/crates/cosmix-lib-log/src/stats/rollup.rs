@@ -237,7 +237,10 @@ fn compute_records_from_current(
     }
 
     for (key, current_value) in &current.gauges {
-        let last = prev.gauges.insert(key.clone(), *current_value).unwrap_or(0.0);
+        let last = prev
+            .gauges
+            .insert(key.clone(), *current_value)
+            .unwrap_or(0.0);
         // Gauges are point-in-time: emit every period regardless of
         // change so the last-`ts` aggregation rule in §4.4 has a
         // current reading.
@@ -590,18 +593,29 @@ mod tests {
         // toggle's first-ever accept carries the merged delta of 15.
         let toggle_seen = toggle.seen.lock().unwrap();
         assert_eq!(toggle_seen.len(), 1);
-        let tr = toggle_seen[0].records.iter().find(|r| r.metric == "c").unwrap();
+        let tr = toggle_seen[0]
+            .records
+            .iter()
+            .find(|r| r.metric == "c")
+            .unwrap();
         match (&tr.value, &tr.delta) {
             (PeriodValue::Counter(v), PeriodValue::Counter(d)) => {
                 assert_eq!(*v, 15);
-                assert_eq!(*d, 15, "merged-delta property: toggle never accepted N=10, must see 15 now");
+                assert_eq!(
+                    *d, 15,
+                    "merged-delta property: toggle never accepted N=10, must see 15 now"
+                );
             }
             _ => panic!("expected counter record"),
         }
         // The good sink saw 10 then 5 — per-period as normal.
         let good_periods = good.periods.lock().unwrap();
         assert_eq!(good_periods.len(), 2);
-        let g2 = good_periods[1].records.iter().find(|r| r.metric == "c").unwrap();
+        let g2 = good_periods[1]
+            .records
+            .iter()
+            .find(|r| r.metric == "c")
+            .unwrap();
         if let (PeriodValue::Counter(v), PeriodValue::Counter(d)) = (&g2.value, &g2.delta) {
             assert_eq!(*v, 15);
             assert_eq!(*d, 5);
@@ -651,8 +665,7 @@ mod tests {
         for p in periods.iter() {
             for r in &p.records {
                 if r.metric == "c"
-                    && let (PeriodValue::Counter(v), PeriodValue::Counter(d)) =
-                        (&r.value, &r.delta)
+                    && let (PeriodValue::Counter(v), PeriodValue::Counter(d)) = (&r.value, &r.delta)
                 {
                     sum_delta += *d;
                     last_value = *v;

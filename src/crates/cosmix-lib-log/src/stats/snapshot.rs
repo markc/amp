@@ -25,14 +25,14 @@
 //! per plan §3.4; v1 trades exactness on multi-million-sample
 //! distributions for zero-allocation simplicity.
 
-use crate::stats::recorder::{shared, RecorderInner};
+use crate::stats::recorder::{RecorderInner, shared};
 use crate::stats::types::{
     HistogramSummary, MetricFamily, MetricKind, Series, SeriesLabels, SeriesValue, Snapshot,
 };
 use metrics_util::AtomicBucket;
 use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 /// Read the current process's recorder registry into a `Snapshot`.
 ///
@@ -125,7 +125,11 @@ pub(crate) fn snapshot_from_inner(inner: &Arc<RecorderInner>) -> Snapshot {
     let mut metrics: Vec<MetricFamily> = by_key.into_values().collect();
     // Name first (operator-meaningful primary sort), kind second
     // (stable tiebreaker for the rare same-name-different-kind case).
-    metrics.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| compare_kind(&a.kind, &b.kind)));
+    metrics.sort_by(|a, b| {
+        a.name
+            .cmp(&b.name)
+            .then_with(|| compare_kind(&a.kind, &b.kind))
+    });
     for family in &mut metrics {
         family
             .series
@@ -165,24 +169,18 @@ fn push_series(
     value: SeriesValue,
     inner: &RecorderInner,
 ) {
-    let entry = by_key
-        .entry((name.to_string(), kind))
-        .or_insert_with(|| {
-            let description = inner
-                .descriptions
-                .read()
-                .ok()
-                .and_then(|d| {
-                    d.get(&(name.to_string(), kind))
-                        .and_then(|d| d.text.clone())
-                });
-            MetricFamily {
-                name: name.to_string(),
-                kind,
-                description,
-                series: Vec::new(),
-            }
+    let entry = by_key.entry((name.to_string(), kind)).or_insert_with(|| {
+        let description = inner.descriptions.read().ok().and_then(|d| {
+            d.get(&(name.to_string(), kind))
+                .and_then(|d| d.text.clone())
         });
+        MetricFamily {
+            name: name.to_string(),
+            kind,
+            description,
+            series: Vec::new(),
+        }
+    });
     entry.series.push(Series {
         labels: SeriesLabels::Raw(labels),
         value,

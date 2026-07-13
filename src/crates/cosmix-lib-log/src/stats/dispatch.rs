@@ -279,9 +279,9 @@ fn audit_probe_oracle(
         return Ok(());
     }
     let reason = match &request.metric {
-        Some(MetricPattern::Exact(name)) => format!(
-            "raw label filter on family {name} (not classified Safe)"
-        ),
+        Some(MetricPattern::Exact(name)) => {
+            format!("raw label filter on family {name} (not classified Safe)")
+        }
         Some(MetricPattern::Prefix(p)) => format!(
             "raw label filter on metric glob {p}* — Prefix admits possibly-Restricted families"
         ),
@@ -316,7 +316,9 @@ fn filter_and_project_family(
     // Apply labels + labels_hash filters first; project sensitivity
     // last so the hash computation in `labels_hash` matching sees
     // the raw labels (which is what JSONL hashes too).
-    family.series.retain(|s| series_matches_labels_filter(s, &request.labels));
+    family
+        .series
+        .retain(|s| series_matches_labels_filter(s, &request.labels));
     if !request.labels_hash.is_empty() {
         family
             .series
@@ -341,7 +343,9 @@ fn series_matches_labels_filter(series: &Series, filters: &[LabelFilter]) -> boo
     };
     filters.iter().all(|f| match f {
         LabelFilter::HasKey(k) => map.contains_key(k.as_str()),
-        LabelFilter::KeyEquals { key, value } => map.get(key.as_str()).map(|s| s.as_str()) == Some(value.as_str()),
+        LabelFilter::KeyEquals { key, value } => {
+            map.get(key.as_str()).map(|s| s.as_str()) == Some(value.as_str())
+        }
     })
 }
 
@@ -377,7 +381,10 @@ mod tests {
             .map(|(k, v)| Label::from_static_parts(k, v))
             .collect();
         let key = Key::from_parts(SharedString::const_str(name), label_vec);
-        let counter: Counter = recorder.register_counter(&key, &metrics::Metadata::new(name, metrics::Level::INFO, None));
+        let counter: Counter = recorder.register_counter(
+            &key,
+            &metrics::Metadata::new(name, metrics::Level::INFO, None),
+        );
         counter.increment(n);
         recorder
     }
@@ -581,10 +588,7 @@ mod tests {
         // where `name` is classified Safe in the captured snapshot.
         // This is the load-bearing positive case for the cap-gate
         // contract (Codex slice-5a round-1 BLOCKERs).
-        classify(
-            "dispatch_glob_scope_safe_metric",
-            LabelSensitivity::Safe,
-        );
+        classify("dispatch_glob_scope_safe_metric", LabelSensitivity::Safe);
         let inner_safe = build_with_counter(
             "dispatch-test",
             "dispatch_glob_scope_safe_metric",
@@ -633,31 +637,28 @@ mod tests {
     #[test]
     fn metric_pattern_prefix_and_suffix_match() {
         classify("dispatch_prefix_match_total", LabelSensitivity::Safe);
-        let inner = build_with_counter(
-            "dispatch-test",
-            "dispatch_prefix_match_total",
-            &[],
-            1,
-        );
+        let inner = build_with_counter("dispatch-test", "dispatch_prefix_match_total", &[], 1);
         let req_prefix = SnapshotRequest {
             metric: Some(MetricPattern::Prefix("dispatch_prefix_".to_string())),
             ..Default::default()
         };
         let snap = snapshot_dispatch(&inner, &req_prefix).expect("ok");
-        assert!(snap
-            .metrics
-            .iter()
-            .any(|m| m.name == "dispatch_prefix_match_total"));
+        assert!(
+            snap.metrics
+                .iter()
+                .any(|m| m.name == "dispatch_prefix_match_total")
+        );
 
         let req_suffix = SnapshotRequest {
             metric: Some(MetricPattern::Suffix("_match_total".to_string())),
             ..Default::default()
         };
         let snap = snapshot_dispatch(&inner, &req_suffix).expect("ok");
-        assert!(snap
-            .metrics
-            .iter()
-            .any(|m| m.name == "dispatch_prefix_match_total"));
+        assert!(
+            snap.metrics
+                .iter()
+                .any(|m| m.name == "dispatch_prefix_match_total")
+        );
 
         let req_exclude = SnapshotRequest {
             metric: Some(MetricPattern::Prefix("does_not_exist_".to_string())),
@@ -704,10 +705,12 @@ mod tests {
         };
         let snap = snapshot_dispatch(&inner, &req_no_match).expect("ok");
         // Family drops entirely when no series survive filtering.
-        assert!(!snap
-            .metrics
-            .iter()
-            .any(|m| m.name == "dispatch_labels_hash_metric"));
+        assert!(
+            !snap
+                .metrics
+                .iter()
+                .any(|m| m.name == "dispatch_labels_hash_metric")
+        );
     }
 
     #[test]

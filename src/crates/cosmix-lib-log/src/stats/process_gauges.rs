@@ -176,11 +176,14 @@ mod tests {
         update_process_gauges(&rec.inner);
         let snap = rec.inner.built_in_gauge_snapshot();
         assert!(
-            !snap.iter().any(|(n, _)| *n == "ghost_gauge_from_a_prior_period"),
+            !snap
+                .iter()
+                .any(|(n, _)| *n == "ghost_gauge_from_a_prior_period"),
             "stale gauge from a prior period must not survive the clear"
         );
         assert!(
-            snap.iter().any(|(n, _)| *n == "cosmix_process_uptime_seconds"),
+            snap.iter()
+                .any(|(n, _)| *n == "cosmix_process_uptime_seconds"),
             "uptime must be re-inserted after the clear"
         );
     }
@@ -191,7 +194,10 @@ mod tests {
             return;
         }
         let kb = read_vm_rss_kb().expect("VmRSS present on Linux");
-        assert!(kb > 0, "VmRSS should be non-zero for a running test process");
+        assert!(
+            kb > 0,
+            "VmRSS should be non-zero for a running test process"
+        );
     }
 
     #[test]

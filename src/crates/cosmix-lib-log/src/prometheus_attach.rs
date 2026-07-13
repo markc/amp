@@ -56,8 +56,8 @@ const PROMETHEUS_GAUGE_IDLE_TIMEOUT: Duration =
 
 use crate::handle::LogError;
 use crate::stats::{
-    precheck_prometheus_attachable, set_prometheus_child_on_installed, PrometheusAttachError,
-    PrometheusChild,
+    PrometheusAttachError, PrometheusChild, precheck_prometheus_attachable,
+    set_prometheus_child_on_installed,
 };
 
 /// Build the Prometheus exporter, attach it to the installed
@@ -80,9 +80,7 @@ pub(crate) async fn attach(addr: SocketAddr) -> Result<(), LogError> {
         .idle_timeout(MetricKindMask::GAUGE, Some(PROMETHEUS_GAUGE_IDLE_TIMEOUT))
         .build()
         .map_err(|e| {
-            LogError::InvalidStats(format!(
-                "Prometheus exporter build failed for {addr}: {e}"
-            ))
+            LogError::InvalidStats(format!("Prometheus exporter build failed for {addr}: {e}"))
         })?;
 
     let child = Arc::new(PrometheusChild::new(recorder));

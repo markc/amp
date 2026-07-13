@@ -52,7 +52,9 @@ fn registry() -> &'static RwLock<HashMap<&'static str, LabelSensitivity>> {
 /// compile-time metric name registered alongside
 /// `metrics::describe_*` calls, so the lifetime requirement is free.
 pub fn classify(name: &'static str, sensitivity: LabelSensitivity) {
-    let mut map = registry().write().expect("classify registry RwLock poisoned");
+    let mut map = registry()
+        .write()
+        .expect("classify registry RwLock poisoned");
     map.insert(name, sensitivity);
 }
 
@@ -64,8 +66,12 @@ pub fn classify(name: &'static str, sensitivity: LabelSensitivity) {
 /// hold the metric name borrowed from the `metrics::Key` (which is
 /// a `metrics::SharedString`, internally a `Cow`).
 pub fn sensitivity_of(name: &str) -> LabelSensitivity {
-    let map = registry().read().expect("classify registry RwLock poisoned");
-    map.get(name).copied().unwrap_or(LabelSensitivity::Restricted)
+    let map = registry()
+        .read()
+        .expect("classify registry RwLock poisoned");
+    map.get(name)
+        .copied()
+        .unwrap_or(LabelSensitivity::Restricted)
 }
 
 /// Returns the default sensitivity for any unclassified family.
@@ -96,10 +102,10 @@ pub fn classify_default() -> LabelSensitivity {
 /// `f` should not call `classify()` itself: doing so would deadlock
 /// because the write lock isn't reentrant and is held to be exclusive
 /// with this reader.
-pub fn with_classifications<R>(
-    f: impl FnOnce(&HashMap<&'static str, LabelSensitivity>) -> R,
-) -> R {
-    let map = registry().read().expect("classify registry RwLock poisoned");
+pub fn with_classifications<R>(f: impl FnOnce(&HashMap<&'static str, LabelSensitivity>) -> R) -> R {
+    let map = registry()
+        .read()
+        .expect("classify registry RwLock poisoned");
     f(&map)
 }
 
@@ -130,10 +136,10 @@ pub fn with_classifications<R>(
 pub(crate) fn classify_built_in_metrics() {
     let safe = &[
         // Plan §3 "built-in counters":
-        "cosmix_log_events_total",            // labels: level, target_root
-        "cosmix_process_uptime_seconds",      // no labels
-        "cosmix_process_memory_kb",           // no labels
-        "cosmix_process_open_fds",            // no labels
+        "cosmix_log_events_total",       // labels: level, target_root
+        "cosmix_process_uptime_seconds", // no labels
+        "cosmix_process_memory_kb",      // no labels
+        "cosmix_process_open_fds",       // no labels
     ];
     for name in safe {
         classify(name, LabelSensitivity::Safe);
@@ -158,10 +164,7 @@ mod tests {
 
     #[test]
     fn classify_safe_then_lookup() {
-        classify(
-            "classify_safe_then_lookup_metric",
-            LabelSensitivity::Safe,
-        );
+        classify("classify_safe_then_lookup_metric", LabelSensitivity::Safe);
         assert_eq!(
             sensitivity_of("classify_safe_then_lookup_metric"),
             LabelSensitivity::Safe
@@ -171,10 +174,7 @@ mod tests {
     #[test]
     fn reclassify_publishes_most_recent() {
         classify("reclassify_metric", LabelSensitivity::Safe);
-        assert_eq!(
-            sensitivity_of("reclassify_metric"),
-            LabelSensitivity::Safe
-        );
+        assert_eq!(sensitivity_of("reclassify_metric"), LabelSensitivity::Safe);
         classify("reclassify_metric", LabelSensitivity::Restricted);
         assert_eq!(
             sensitivity_of("reclassify_metric"),

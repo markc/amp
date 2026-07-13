@@ -168,8 +168,7 @@ async fn run_stub(listener: TcpListener, stub: Arc<Stub>) {
                         // socket server-side; closing it would mask a
                         // client that leaked the socket after its
                         // register failed.
-                        let forced_reject =
-                            stub.reject_register_on_reconnect && conn_index >= 2;
+                        let forced_reject = stub.reject_register_on_reconnect && conn_index >= 2;
                         let collision = {
                             let mut s = stub.state.lock().await;
                             s.register_names.push(from.clone());
@@ -180,8 +179,7 @@ async fn run_stub(listener: TcpListener, stub: Arc<Stub>) {
                                 match s.active_registrations.get(&from) {
                                     Some(&owner) if owner != conn_index => true,
                                     _ => {
-                                        s.active_registrations
-                                            .insert(from.clone(), conn_index);
+                                        s.active_registrations.insert(from.clone(), conn_index);
                                         false
                                     }
                                 }
@@ -256,7 +254,8 @@ async fn run_stub(listener: TcpListener, stub: Arc<Stub>) {
             // tests assert against.
             {
                 let mut s = stub.state.lock().await;
-                s.active_registrations.retain(|_, owner| *owner != conn_index);
+                s.active_registrations
+                    .retain(|_, owner| *owner != conn_index);
                 s.open_connections = s.open_connections.saturating_sub(1);
             }
         });
@@ -340,7 +339,10 @@ async fn reconnects_reregisters_replays_and_keeps_incoming_stream() {
         let s = stub.state.lock().await;
         assert_eq!(
             s.register_names,
-            vec!["cosmix-statecache".to_string(), "cosmix-statecache".to_string()],
+            vec![
+                "cosmix-statecache".to_string(),
+                "cosmix-statecache".to_string()
+            ],
             "must re-register under the same name"
         );
         assert_eq!(
@@ -378,7 +380,10 @@ async fn reconnects_reregisters_replays_and_keeps_incoming_stream() {
     client.deregister().await.expect("deregister");
     assert!(
         wait_until(5, || {
-            stub.state.try_lock().map(|s| s.deregistered).unwrap_or(false)
+            stub.state
+                .try_lock()
+                .map(|s| s.deregistered)
+                .unwrap_or(false)
         })
         .await,
         "broker must observe noded.deregister"
@@ -407,13 +412,10 @@ async fn reconnect_resends_provenance() {
         "2026-01-01T00:00:00Z",
         "2026-01-01T00:00:00Z".to_string(),
     );
-    let client = SupervisedClient::connect_supervised_with_provenance(
-        "cosmix-statecache",
-        &url,
-        Some(prov),
-    )
-    .await
-    .expect("initial connect");
+    let client =
+        SupervisedClient::connect_supervised_with_provenance("cosmix-statecache", &url, Some(prov))
+            .await
+            .expect("initial connect");
     assert_eq!(client.state(), ConnState::Connected);
 
     // Initial register carried the provenance body.
@@ -525,8 +527,14 @@ async fn subscribe_records_only_after_rc0() {
         .await
         .expect("initial connect");
 
-    client.subscribe_topic("world.a").await.expect("subscribe a");
-    client.subscribe_topic("world.b").await.expect("subscribe b");
+    client
+        .subscribe_topic("world.a")
+        .await
+        .expect("subscribe a");
+    client
+        .subscribe_topic("world.b")
+        .await
+        .expect("subscribe b");
     // Duplicate: harmless no-op, registry dedups, no reorder.
     client
         .subscribe_topic("world.a")
@@ -567,7 +575,10 @@ async fn rejected_subscribe_leaves_registry_unchanged() {
         .await
         .expect("initial connect");
 
-    client.subscribe_topic("ok.a").await.expect("subscribe ok.a");
+    client
+        .subscribe_topic("ok.a")
+        .await
+        .expect("subscribe ok.a");
     let err = client
         .subscribe_topic("reserved.x")
         .await
@@ -606,8 +617,14 @@ async fn unsubscribe_removes_only_after_rc0() {
         .await
         .expect("initial connect");
 
-    client.subscribe_topic("world.a").await.expect("subscribe a");
-    client.subscribe_topic("world.b").await.expect("subscribe b");
+    client
+        .subscribe_topic("world.a")
+        .await
+        .expect("subscribe a");
+    client
+        .subscribe_topic("world.b")
+        .await
+        .expect("subscribe b");
     client
         .unsubscribe_topic("world.a")
         .await
@@ -713,7 +730,9 @@ async fn replay_failure_keeps_disconnected_no_false_connected() {
         .await
         .expect("initial connect");
     let _incoming = client.incoming().expect("incoming taken once");
-    client.subscription_registry().record("world.statecache.probe");
+    client
+        .subscription_registry()
+        .record("world.statecache.probe");
 
     stub.drop_conn1.notify_waiters();
 

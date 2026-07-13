@@ -405,15 +405,13 @@ impl NodedClient {
                 .and_then(|v| v.get("message").or_else(|| v.get("error")))
                 .and_then(|v| v.as_str())
                 .map(str::to_string);
-            let msg = from_body
-                .or(error_header)
-                .unwrap_or_else(|| {
-                    if body_str.is_empty() {
-                        format!("rc={rc} (no error body)")
-                    } else {
-                        body_str.clone()
-                    }
-                });
+            let msg = from_body.or(error_header).unwrap_or_else(|| {
+                if body_str.is_empty() {
+                    format!("rc={rc} (no error body)")
+                } else {
+                    body_str.clone()
+                }
+            });
             anyhow::bail!("{msg}");
         }
         if body_str.is_empty() {
@@ -500,10 +498,7 @@ impl NodedClient {
         };
         guard.disarm();
 
-        let rc: u8 = response
-            .get("rc")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
+        let rc: u8 = response.get("rc").and_then(|s| s.parse().ok()).unwrap_or(0);
         let error_header = response.get("error").map(str::to_string);
         Ok((rc, response.body, error_header))
     }
@@ -716,10 +711,7 @@ impl NodedClient {
         // The reader's normal exit drains `pending`; on abort that
         // never runs, so do it here — any parked caller gets a
         // closed-channel error now instead of a 60s timeout.
-        self.pending
-            .lock()
-            .expect("pending mutex poisoned")
-            .clear();
+        self.pending.lock().expect("pending mutex poisoned").clear();
     }
 
     /// Send a raw AMP message to the broker (no request/response framing).
@@ -795,10 +787,7 @@ impl NodedClient {
                     // remove an entry without an executor; this brief
                     // remove/send sequence holds no `.await` inside
                     // the lock guard.
-                    let removed = pending
-                        .lock()
-                        .expect("pending mutex poisoned")
-                        .remove(id);
+                    let removed = pending.lock().expect("pending mutex poisoned").remove(id);
                     if let Some(tx) = removed {
                         let _ = tx.send(msg.clone());
                     } else {
@@ -862,10 +851,7 @@ mod pending_guard_tests {
     fn armed_drop_removes_the_pending_entry() {
         let pending = mk_pending();
         let (tx, _rx) = oneshot::channel();
-        pending
-            .lock()
-            .unwrap()
-            .insert("42".to_string(), tx);
+        pending.lock().unwrap().insert("42".to_string(), tx);
         assert!(
             pending.lock().unwrap().contains_key("42"),
             "precondition: entry inserted"
@@ -887,10 +873,7 @@ mod pending_guard_tests {
     fn disarmed_drop_leaves_the_pending_entry_in_place() {
         let pending = mk_pending();
         let (tx, _rx) = oneshot::channel();
-        pending
-            .lock()
-            .unwrap()
-            .insert("7".to_string(), tx);
+        pending.lock().unwrap().insert("7".to_string(), tx);
 
         {
             let mut guard = PendingGuard::arm(pending.clone(), "7".to_string());

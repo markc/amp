@@ -52,10 +52,7 @@ pub fn labels_hash_bytes(labels: &BTreeMap<String, String>) -> Vec<u8> {
     let n = u32::try_from(labels.len()).expect("label-set size fits in u32 (cap = 4096)");
     // Pre-size by counting key+value bytes; saves reallocations on the
     // common per-record path. 4 bytes pair count + per-pair (4 + key + 4 + value).
-    let pair_bytes: usize = labels
-        .iter()
-        .map(|(k, v)| 8 + k.len() + v.len())
-        .sum();
+    let pair_bytes: usize = labels.iter().map(|(k, v)| 8 + k.len() + v.len()).sum();
     let mut out = Vec::with_capacity(4 + pair_bytes);
     out.extend_from_slice(&n.to_le_bytes());
     // BTreeMap iterates in sorted key order; that *is* the canonical
@@ -116,7 +113,8 @@ mod tests {
             let hash = labels_hash(&input);
             assert_eq!(hash.len(), 16, "expected 16-char hash for {input:?}");
             assert!(
-                hash.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+                hash.chars()
+                    .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
                 "hash {hash} must be lowercase hex only"
             );
         }

@@ -173,10 +173,6 @@ impl OnOff {
 
 impl From<bool> for OnOff {
     fn from(b: bool) -> Self {
-        if b {
-            OnOff::On
-        } else {
-            OnOff::Off
-        }
+        if b { OnOff::On } else { OnOff::Off }
     }
 }

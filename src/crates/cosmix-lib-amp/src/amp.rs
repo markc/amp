@@ -1274,7 +1274,10 @@ mod tests {
             !report.is_empty(),
             "overflow is recorded so strict callers reject"
         );
-        assert!(parse_strict(&raw).is_err(), "strict parse rejects an over-cap frame");
+        assert!(
+            parse_strict(&raw).is_err(),
+            "strict parse rejects an over-cap frame"
+        );
     }
 
     #[test]
@@ -1290,7 +1293,10 @@ mod tests {
         let (msg, report) = parse_lenient(&raw).unwrap();
         assert_eq!(msg.headers.len(), 1, "duplicate keys collapse to one entry");
         assert!(
-            report.skipped_lines.iter().any(|(_, l)| l.contains("exceeds")),
+            report
+                .skipped_lines
+                .iter()
+                .any(|(_, l)| l.contains("exceeds")),
             "the line-count cap tripped despite the map staying small"
         );
     }

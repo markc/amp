@@ -43,7 +43,9 @@ use crate::stats::rollup::{InstalledSink, PrevState};
 use crate::stats::sink::StatsSink;
 use crate::stats::types::MetricKind;
 use metrics::atomics::AtomicU64;
-use metrics::{Counter, Gauge, Histogram, Key, KeyName, Label, Metadata, Recorder, SharedString, Unit};
+use metrics::{
+    Counter, Gauge, Histogram, Key, KeyName, Label, Metadata, Recorder, SharedString, Unit,
+};
 use metrics_util::registry::{AtomicStorage, Registry};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::Ordering;
@@ -307,7 +309,9 @@ impl StatsRecorder {
     pub fn install(self) -> Result<(), InstallError> {
         let inner = Arc::clone(&self.inner);
         metrics::set_global_recorder(self).map_err(|_| InstallError::GlobalRecorderSet)?;
-        SHARED.set(inner).map_err(|_| InstallError::AlreadyInstalled)?;
+        SHARED
+            .set(inner)
+            .map_err(|_| InstallError::AlreadyInstalled)?;
         Ok(())
     }
 
@@ -571,9 +575,7 @@ impl RecorderInner {
                 .expect("stats descriptions write RwLock poisoned");
             d.entry((CARDINALITY_DROPS_METRIC.to_string(), MetricKind::Counter))
                 .or_insert(MetricDescription {
-                    text: Some(
-                        "Per-metric cardinality cap rejections (built-in).".to_string(),
-                    ),
+                    text: Some("Per-metric cardinality cap rejections (built-in).".to_string()),
                 });
         }
         // Plan §3.3.1: rate-limited warn, at most once per metric per
@@ -604,8 +606,7 @@ impl RecorderInner {
             let labels_hash = labels_hash(&labels_map);
             // Dedup + sort label keys for stable rendering. Vec is
             // bounded by the per-Key label count (small in practice).
-            let mut label_keys: Vec<&str> =
-                rejected.labels().map(|l| l.key()).collect();
+            let mut label_keys: Vec<&str> = rejected.labels().map(|l| l.key()).collect();
             label_keys.sort_unstable();
             label_keys.dedup();
             tracing::warn!(
@@ -861,10 +862,7 @@ mod tests {
             .build();
         // Fill the cap.
         for i in 0..16 {
-            let k = Key::from_parts(
-                "capped_metric",
-                vec![Label::new("i", format!("{i}"))],
-            );
+            let k = Key::from_parts("capped_metric", vec![Label::new("i", format!("{i}"))]);
             let c = rec.register_counter(&k, &metadata());
             c.increment(1);
         }
@@ -918,10 +916,11 @@ mod tests {
             other => panic!("expected counter, got {other:?}"),
         }
         // No drops should be recorded.
-        assert!(snap
-            .metrics
-            .iter()
-            .all(|m| m.name != CARDINALITY_DROPS_METRIC));
+        assert!(
+            snap.metrics
+                .iter()
+                .all(|m| m.name != CARDINALITY_DROPS_METRIC)
+        );
     }
 
     #[test]
@@ -938,10 +937,7 @@ mod tests {
         for i in 0..16 {
             let k = Key::from_parts(
                 "dup_key_metric",
-                vec![
-                    Label::new("a", format!("{i}")),
-                    Label::new("a", "fixed"),
-                ],
+                vec![Label::new("a", format!("{i}")), Label::new("a", "fixed")],
             );
             rec.register_counter(&k, &metadata()).increment(1);
         }
@@ -1010,7 +1006,10 @@ mod tests {
         // upstream ever changed this, the cap-bypass concern itself
         // would vanish, but the test (and any code depending on it)
         // would also misreport.
-        assert_ne!(k_a, k_b, "permuted duplicate-key 3-label Keys must be distinct");
+        assert_ne!(
+            k_a, k_b,
+            "permuted duplicate-key 3-label Keys must be distinct"
+        );
         rec.register_counter(&k_a, &metadata()).increment(1);
         rec.register_counter(&k_b, &metadata()).increment(1);
         let snap = snapshot_from_inner(&rec.inner);
@@ -1026,7 +1025,9 @@ mod tests {
         );
         // No drops yet — we are well under the cap of 16.
         assert!(
-            snap.metrics.iter().all(|m| m.name != CARDINALITY_DROPS_METRIC),
+            snap.metrics
+                .iter()
+                .all(|m| m.name != CARDINALITY_DROPS_METRIC),
             "cap not hit yet, drops counter must not appear"
         );
     }
@@ -1068,9 +1069,16 @@ mod tests {
             // would-be app values, and there must be at most one
             // series under the gauge family (no duplicates).
             let count = snap.metrics.iter().filter(|m| m.name == *name).count();
-            assert!(count <= 1, "reserved built-in name {name} produced {count} families");
+            assert!(
+                count <= 1,
+                "reserved built-in name {name} produced {count} families"
+            );
             if let Some(family) = snap.metrics.iter().find(|m| m.name == *name) {
-                assert_eq!(family.series.len(), 1, "reserved-name family must have at most one series");
+                assert_eq!(
+                    family.series.len(),
+                    1,
+                    "reserved-name family must have at most one series"
+                );
                 if let crate::stats::types::SeriesValue::Gauge(v) = &family.series[0].value {
                     assert!(
                         (*v - 999.0).abs() > f64::EPSILON,
@@ -1097,9 +1105,6 @@ mod tests {
             .iter()
             .find(|m| m.name == "text_metric")
             .expect("family present");
-        assert_eq!(
-            family.description.as_deref(),
-            Some("operator description")
-        );
+        assert_eq!(family.description.as_deref(), Some("operator description"));
     }
 }

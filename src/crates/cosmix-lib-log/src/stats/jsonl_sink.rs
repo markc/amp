@@ -130,7 +130,12 @@ impl JsonlSink {
         identity: &str,
         byte_budget_mib: u32,
     ) -> std::io::Result<Self> {
-        Self::new(log_dir.into(), identity, ProducerClass::Daemon, byte_budget_mib)
+        Self::new(
+            log_dir.into(),
+            identity,
+            ProducerClass::Daemon,
+            byte_budget_mib,
+        )
     }
 
     /// Construct a delta-class sink. Filename discriminator
@@ -140,7 +145,12 @@ impl JsonlSink {
         identity: &str,
         byte_budget_mib: u32,
     ) -> std::io::Result<Self> {
-        Self::new(log_dir.into(), identity, ProducerClass::Delta, byte_budget_mib)
+        Self::new(
+            log_dir.into(),
+            identity,
+            ProducerClass::Delta,
+            byte_budget_mib,
+        )
     }
 
     fn new(
@@ -178,13 +188,21 @@ impl JsonlSink {
     /// Path of the live `.jsonl.open` file. Exposed for tests and
     /// the slice-5 `disk_snapshot` reader.
     pub fn open_path(&self) -> PathBuf {
-        self.inner.lock().expect("JsonlSink poisoned").open_path.clone()
+        self.inner
+            .lock()
+            .expect("JsonlSink poisoned")
+            .open_path
+            .clone()
     }
 
     /// Path the file will be renamed to on `flush()`. Exposed for
     /// tests and the slice-5 `disk_snapshot` reader.
     pub fn done_path(&self) -> PathBuf {
-        self.inner.lock().expect("JsonlSink poisoned").done_path.clone()
+        self.inner
+            .lock()
+            .expect("JsonlSink poisoned")
+            .done_path
+            .clone()
     }
 }
 
@@ -320,9 +338,7 @@ impl StatsSink for JsonlSink {
             return Ok(());
         }
         let writer = inner.file.as_mut().ok_or_else(|| {
-            std::io::Error::other(
-                "JsonlSink writer slot empty (post-flush invariant violated)",
-            )
+            std::io::Error::other("JsonlSink writer slot empty (post-flush invariant violated)")
         })?;
         for line in &lines {
             writer.write_all(line.as_bytes())?;
@@ -404,9 +420,8 @@ fn build_line(period: &PeriodSnapshot, rec: &PeriodRecord) -> std::io::Result<St
     // labels XOR labels_hash, per plan §4.1 (Codex round-14 MAJOR fix).
     match rec.sensitivity {
         LabelSensitivity::Safe => {
-            let labels_value = serde_json::to_value(&rec.labels).map_err(|e| {
-                std::io::Error::other(e.to_string())
-            })?;
+            let labels_value = serde_json::to_value(&rec.labels)
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
             obj.insert("labels".into(), labels_value);
         }
         LabelSensitivity::Restricted => {
@@ -423,8 +438,7 @@ fn build_line(period: &PeriodSnapshot, rec: &PeriodRecord) -> std::io::Result<St
         "period".into(),
         Value::Number(Number::from(period.period_seconds)),
     );
-    serde_json::to_string(&Value::Object(obj))
-        .map_err(|e| std::io::Error::other(e.to_string()))
+    serde_json::to_string(&Value::Object(obj)).map_err(|e| std::io::Error::other(e.to_string()))
 }
 
 fn kind_str(k: MetricKind) -> &'static str {
@@ -443,9 +457,7 @@ fn value_to_json(v: &PeriodValue, kind: MetricKind) -> std::io::Result<Value> {
         )
     };
     match (v, kind) {
-        (PeriodValue::Counter(n), MetricKind::Counter) => {
-            Ok(Value::Number(Number::from(*n)))
-        }
+        (PeriodValue::Counter(n), MetricKind::Counter) => Ok(Value::Number(Number::from(*n))),
         (PeriodValue::Gauge(x), MetricKind::Gauge) => Ok(num_or_null(*x)),
         (PeriodValue::Histogram(s), MetricKind::Histogram) => {
             let mut m = serde_json::Map::with_capacity(5);
@@ -492,12 +504,21 @@ mod tests {
         }
     }
 
-    fn counter_rec(name: &str, sens: LabelSensitivity, labels: &[(&str, &str)], v: u64, d: u64) -> PeriodRecord {
+    fn counter_rec(
+        name: &str,
+        sens: LabelSensitivity,
+        labels: &[(&str, &str)],
+        v: u64,
+        d: u64,
+    ) -> PeriodRecord {
         PeriodRecord {
             metric: name.into(),
             kind: MetricKind::Counter,
             sensitivity: sens,
-            labels: labels.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            labels: labels
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             value: PeriodValue::Counter(v),
             delta: PeriodValue::Counter(d),
         }
@@ -507,7 +528,10 @@ mod tests {
 
     fn read_lines(path: &Path) -> Vec<String> {
         let f = File::open(path).expect("open .open file");
-        BufReader::new(f).lines().map(|r| r.expect("line")).collect()
+        BufReader::new(f)
+            .lines()
+            .map(|r| r.expect("line"))
+            .collect()
     }
 
     #[test]
@@ -535,7 +559,10 @@ mod tests {
         assert_eq!(v["host"], "test-host");
         assert_eq!(v["service"], "test-svc");
         assert_eq!(v["labels"]["verdict"], "spam");
-        assert!(v.get("labels_hash").is_none(), "Safe family must not write labels_hash");
+        assert!(
+            v.get("labels_hash").is_none(),
+            "Safe family must not write labels_hash"
+        );
     }
 
     #[test]
@@ -554,10 +581,16 @@ mod tests {
         sink.flush().unwrap();
         let lines = read_lines(&done);
         let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
-        assert!(v.get("labels").is_none(), "Restricted family must not write raw labels");
+        assert!(
+            v.get("labels").is_none(),
+            "Restricted family must not write raw labels"
+        );
         let hash = v["labels_hash"].as_str().expect("labels_hash present");
         assert_eq!(hash.len(), 16, "labels_hash is 16 hex chars");
-        assert!(hash.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(
+            hash.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
     }
 
     #[test]
@@ -638,8 +671,7 @@ mod tests {
         let bare_open = tmp.path().join(format!("{stem}.jsonl.open"));
         std::fs::write(&bare_open, b"").unwrap();
 
-        let (open_path, done_path, _file) =
-            open_with_collision_retry(tmp.path(), stem).unwrap();
+        let (open_path, done_path, _file) = open_with_collision_retry(tmp.path(), stem).unwrap();
         assert_eq!(
             open_path,
             tmp.path().join(format!("{stem}-1.jsonl.open")),
@@ -653,8 +685,7 @@ mod tests {
 
         // Second retry: -1 is now taken (by the just-returned File),
         // so the next call must bump to -2.
-        let (open_path_2, _, _file2) =
-            open_with_collision_retry(tmp.path(), stem).unwrap();
+        let (open_path_2, _, _file2) = open_with_collision_retry(tmp.path(), stem).unwrap();
         assert_eq!(
             open_path_2,
             tmp.path().join(format!("{stem}-2.jsonl.open")),
@@ -666,8 +697,7 @@ mod tests {
         let bare_open_3 = tmp.path().join("alt-stem.jsonl.open");
         let bare_done_3 = tmp.path().join("alt-stem.jsonl.done");
         std::fs::write(&bare_done_3, b"").unwrap();
-        let (open_path_3, _, _file3) =
-            open_with_collision_retry(tmp.path(), "alt-stem").unwrap();
+        let (open_path_3, _, _file3) = open_with_collision_retry(tmp.path(), "alt-stem").unwrap();
         assert_eq!(
             open_path_3,
             tmp.path().join("alt-stem-1.jsonl.open"),
@@ -774,7 +804,10 @@ mod tests {
         assert!(!inner.paused, "UTC-day rollover must clear the pause flag");
         // bytes_today should reflect only this period's write, not
         // the carry-over from the prior day.
-        assert!(inner.bytes_today < 1024, "budget counter reset on UTC-day rollover");
+        assert!(
+            inner.bytes_today < 1024,
+            "budget counter reset on UTC-day rollover"
+        );
     }
 
     #[test]
@@ -808,8 +841,18 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let d = JsonlSink::daemon(tmp.path(), "svc", 256).unwrap();
         let m = JsonlSink::delta(tmp.path(), "svc", 16).unwrap();
-        let d_name = d.open_path().file_name().unwrap().to_string_lossy().into_owned();
-        let m_name = m.open_path().file_name().unwrap().to_string_lossy().into_owned();
+        let d_name = d
+            .open_path()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let m_name = m
+            .open_path()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         assert!(d_name.contains(".stats.daemon-"), "{d_name}");
         assert!(m_name.contains(".stats.delta-"), "{m_name}");
     }

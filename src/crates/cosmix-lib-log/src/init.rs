@@ -9,9 +9,9 @@
 use std::io::IsTerminal;
 use std::sync::Arc;
 
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 
 use crate::defaults::{LogDefaults, RotationMode};
 use crate::handle::{LogError, LogHandle};
@@ -132,8 +132,7 @@ pub fn init(
     // metrics recorder (the `metrics` crate has no uninstall path).
     // §3543-3559 only requires recorder install before `try_init()`,
     // which is still satisfied.
-    let short_circuit_subscriber =
-        !env_log_set && !cli_filter_set && !baseline_wants_subscriber;
+    let short_circuit_subscriber = !env_log_set && !cli_filter_set && !baseline_wants_subscriber;
 
     let filter_opt = if short_circuit_subscriber {
         debug_assert_eq!(effective_level, LogLevel::None);
@@ -178,8 +177,9 @@ pub fn init(
     // reload layer. `"off"` is a built-in directive so the parse cannot
     // fail in practice; the `expect` is documentation rather than a real
     // failure path.
-    let filter = filter_opt
-        .unwrap_or_else(|| EnvFilter::try_new("off").expect("'off' is a valid EnvFilter directive"));
+    let filter = filter_opt.unwrap_or_else(|| {
+        EnvFilter::try_new("off").expect("'off' is a valid EnvFilter directive")
+    });
     let format = opts.log_format.unwrap_or(defaults.format);
     let mut guards = Vec::new();
 
@@ -325,7 +325,9 @@ fn install_stats_recorder(
 ) -> Result<bool, LogError> {
     // Cap precedence: CLI `--stats-byte-budget` over the binary's
     // `LogDefaults.stats_byte_budget`.
-    let byte_budget_mib = stats_opts.stats_byte_budget.unwrap_or(defaults.stats_byte_budget);
+    let byte_budget_mib = stats_opts
+        .stats_byte_budget
+        .unwrap_or(defaults.stats_byte_budget);
     let budget_u64 = u64::from(byte_budget_mib);
     if !(BYTE_BUDGET_FLOOR_MIB..=BYTE_BUDGET_CEILING_MIB).contains(&budget_u64) {
         return Err(LogError::InvalidStats(format!(
@@ -471,7 +473,11 @@ fn synthesise_directive(default_target: &str, level: LogLevel) -> String {
     if default_target.is_empty() {
         level.as_directive().to_string()
     } else {
-        format!("{}={},cosmix_amp=info", default_target, level.as_directive())
+        format!(
+            "{}={},cosmix_amp=info",
+            default_target,
+            level.as_directive()
+        )
     }
 }
 

@@ -134,7 +134,10 @@ pub fn emit() {
         .unwrap_or(false);
 
     println!("cargo:rustc-env=COSMIX_GIT_SHA={sha}");
-    println!("cargo:rustc-env=COSMIX_GIT_DIRTY={}", if dirty { 1 } else { 0 });
+    println!(
+        "cargo:rustc-env=COSMIX_GIT_DIRTY={}",
+        if dirty { 1 } else { 0 }
+    );
     println!("cargo:rustc-env=COSMIX_BUILD_TIME={}", build_time());
 
     // Emitting ANY `rerun-if-changed` disables Cargo's default "rerun on

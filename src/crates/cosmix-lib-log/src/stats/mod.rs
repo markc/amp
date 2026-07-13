@@ -62,7 +62,7 @@ mod snapshot;
 mod types;
 
 #[cfg(feature = "amp-handlers")]
-pub use amp::{handle_snapshot_amp, SnapshotCaps, SNAPSHOT_MAX_RESPONSE_BYTES};
+pub use amp::{SNAPSHOT_MAX_RESPONSE_BYTES, SnapshotCaps, handle_snapshot_amp};
 // Canonical interval ceiling lives in `init`; re-exposed here so the
 // prometheus gauge idle-timeout (and any consumer) reads it under the
 // `stats::` path the original schema export used. Only the prometheus
@@ -70,21 +70,19 @@ pub use amp::{handle_snapshot_amp, SnapshotCaps, SNAPSHOT_MAX_RESPONSE_BYTES};
 #[cfg(feature = "prometheus")]
 pub(crate) use crate::init::INTERVAL_SECONDS_CEILING;
 pub use classify::{classify, classify_default, sensitivity_of};
-pub use dispatch::{
-    snapshot_dispatch, LabelFilter, MetricPattern, SnapshotError, SnapshotRequest,
-};
+pub use dispatch::{LabelFilter, MetricPattern, SnapshotError, SnapshotRequest, snapshot_dispatch};
 pub(crate) use event_counter::EventCounterLayer;
-pub use jsonl_sink::{JsonlSink, ProducerClass, HARD_BUDGET_BYTES};
+pub use jsonl_sink::{HARD_BUDGET_BYTES, JsonlSink, ProducerClass};
 pub use labels_hash::{labels_hash, labels_hash_bytes};
 #[cfg(feature = "prometheus")]
 pub use prometheus::PrometheusChild;
 pub use recorder::{
-    add_sink_to_installed, InstallError, StatsRecorder, StatsRecorderBuilder, CARDINALITY_CEILING,
-    CARDINALITY_DEFAULT, CARDINALITY_DROPS_METRIC, CARDINALITY_FLOOR,
+    CARDINALITY_CEILING, CARDINALITY_DEFAULT, CARDINALITY_DROPS_METRIC, CARDINALITY_FLOOR,
+    InstallError, StatsRecorder, StatsRecorderBuilder, add_sink_to_installed,
 };
 #[cfg(feature = "prometheus")]
 pub use recorder::{
-    precheck_prometheus_attachable, set_prometheus_child_on_installed, PrometheusAttachError,
+    PrometheusAttachError, precheck_prometheus_attachable, set_prometheus_child_on_installed,
 };
 pub use rollup::{flush_all_sinks, perform_rollup, shutdown_installed_recorder};
 pub use sink::{PeriodRecord, PeriodSnapshot, PeriodValue, StatsSink};
