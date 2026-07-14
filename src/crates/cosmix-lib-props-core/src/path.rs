@@ -5,7 +5,7 @@ use std::fmt;
 
 /// A validated dotted property path. Segments are lowercase
 /// alphanumeric + `_`; the wildcard `*` is reserved.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PropPath(String);
 

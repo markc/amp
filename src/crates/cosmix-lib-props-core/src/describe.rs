@@ -101,6 +101,43 @@ impl PropDescribe {
         self.format = Some(f.into());
         self
     }
+
+    /// Format-as-unit convention: for a numeric leaf, `format` names the
+    /// unit token the value is expressed in (e.g. `"dBFS"`, `"cents"`,
+    /// `"seconds"`). This is a thin, documented alias over [`with_format`]
+    /// so a schema author signals "this number is in unit X" uniformly;
+    /// consumers read `format` as the unit for numeric types.
+    pub fn with_unit(self, unit: impl Into<String>) -> Self {
+        self.with_format(unit)
+    }
+
+    /// Inclusive lower bound for a numeric leaf. SPEC 07 §2.4 `min`.
+    pub fn with_min(mut self, min: f64) -> Self {
+        self.min = Some(min);
+        self
+    }
+
+    /// Inclusive upper bound for a numeric leaf. SPEC 07 §2.4 `max`.
+    pub fn with_max(mut self, max: f64) -> Self {
+        self.max = Some(max);
+        self
+    }
+
+    /// Default value advertised for the leaf. SPEC 07 §2.4 `default`.
+    pub fn with_default(mut self, v: impl Into<serde_json::Value>) -> Self {
+        self.default = Some(v.into());
+        self
+    }
+
+    /// Permitted values for an enum-typed leaf. SPEC 07 §2.4 `enum`.
+    pub fn with_enum<I, S>(mut self, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.enum_values = Some(values.into_iter().map(Into::into).collect());
+        self
+    }
 }
 
 #[cfg(test)]
@@ -125,5 +162,45 @@ mod tests {
         assert!(j.get("default").is_none());
         assert!(j.get("transient").is_none());
         assert!(j.get("deprecated").is_none());
+    }
+
+    #[test]
+    fn numeric_builders_and_unit_convention() {
+        let d = PropDescribe::leaf(
+            PropPath::new("mixer.channels.0.fader").unwrap(),
+            PropType::Number,
+            "channel fader",
+        )
+        .with_mutable(true)
+        .with_min(-96.0)
+        .with_max(12.0)
+        .with_default(0.0)
+        .with_unit("dBFS");
+        let j = serde_json::to_value(&d).unwrap();
+        assert_eq!(j["type"], "number");
+        assert_eq!(j["mutable"], true);
+        assert_eq!(j["min"], -96.0);
+        assert_eq!(j["max"], 12.0);
+        assert_eq!(j["default"], 0.0);
+        // format-as-unit convention: `format` carries the unit token.
+        assert_eq!(j["format"], "dBFS");
+    }
+
+    #[test]
+    fn enum_builder() {
+        let d = PropDescribe::leaf(
+            PropPath::new("transport.state").unwrap(),
+            PropType::String,
+            "transport state",
+        )
+        .with_enum(["stopped", "playing", "paused"]);
+        let j = serde_json::to_value(&d).unwrap();
+        let vals: Vec<&str> = j["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_str().unwrap())
+            .collect();
+        assert_eq!(vals, ["stopped", "playing", "paused"]);
     }
 }
