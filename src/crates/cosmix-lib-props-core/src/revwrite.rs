@@ -57,7 +57,8 @@ use std::collections::BTreeMap;
 pub struct RevWriteRequest {
     pub path: PropPath,
     pub value: PropValue,
-    /// Caller-chosen idempotency / correlation id echoed back on the ack.
+    /// Caller-chosen correlation id echoed back on the ack. NOT an idempotency
+    /// key — retries are not deduplicated; every `apply()` is a distinct write.
     pub op_id: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub if_revision: Option<u64>,
@@ -231,8 +232,13 @@ impl RevWriteStore {
             });
         }
 
-        // Accept.
-        self.revision += 1;
+        // Accept. Checked increment — u64 will not wrap in any real lifetime,
+        // but a wrap would silently break monotonicity, so treat it as the
+        // invariant violation it is rather than eventually rolling over.
+        self.revision = self
+            .revision
+            .checked_add(1)
+            .expect("RevWriteStore revision counter overflowed u64");
         let rev = self.revision;
         self.entries.insert(
             req.path.clone(),
