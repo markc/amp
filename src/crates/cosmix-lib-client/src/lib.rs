@@ -17,7 +17,7 @@
 //! // `cosmix-lib-config` (amp/cos boundary). The
 //! // `cosmix_config::client_helpers` module wraps these primitives
 //! // with auto-resolve helpers when callers want the
-//! // node.toml-derived URL.
+//! // node.conf.mix-derived URL.
 //! let client = NodedClient::connect("my-service", "ws://127.0.0.1:4200/ws").await?;
 //! let result = client.call("files", "file.list", serde_json::json!({"path": "/tmp"})).await?;
 //! println!("Files: {result}");
