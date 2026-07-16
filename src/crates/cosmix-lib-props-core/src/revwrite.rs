@@ -295,10 +295,7 @@ impl RevWriteStore {
 ///
 /// The store's monotonic revisions guarantee this is safe against duplicate or
 /// out-of-order delivery of the change stream.
-pub fn accept_if_newer(
-    cache: &mut BTreeMap<PropPath, ChangedProp>,
-    incoming: ChangedProp,
-) -> bool {
+pub fn accept_if_newer(cache: &mut BTreeMap<PropPath, ChangedProp>, incoming: ChangedProp) -> bool {
     match cache.get(&incoming.path) {
         Some(existing) if existing.revision >= incoming.revision => false,
         _ => {
