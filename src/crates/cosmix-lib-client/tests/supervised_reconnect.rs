@@ -286,6 +286,7 @@ async fn reconnects_reregisters_replays_and_keeps_incoming_stream() {
         .await
         .expect("initial connect");
     assert_eq!(client.state(), ConnState::Connected);
+    assert_eq!(client.connection_generation(), 1);
 
     // Take the outward incoming stream BEFORE the bounce — it must
     // survive the reconnect.
@@ -334,6 +335,10 @@ async fn reconnects_reregisters_replays_and_keeps_incoming_stream() {
     assert!(
         wait_until(5, || client.state() == ConnState::Connected).await,
         "state should return to Connected"
+    );
+    assert!(
+        wait_until(5, || client.connection_generation() >= 2).await,
+        "successful reconnect must advance the connection generation"
     );
     {
         let s = stub.state.lock().await;

@@ -35,7 +35,7 @@
 //! but the machinery is exercised by the reconnect test.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use rand::Rng;
@@ -244,6 +244,10 @@ pub struct SupervisedClient {
     /// proxies so the network await never holds the lock.
     inner: Arc<RwLock<Arc<NodedClient>>>,
     state: Arc<AtomicU8>,
+    /// Monotonic successful-connection generation. Starts at one for the
+    /// initial connection and increments after every complete reconnect and
+    /// subscription replay, so consumers cannot sample away a fast bounce.
+    connection_generation: Arc<AtomicU64>,
     registry: SubscriptionRegistry,
     /// Outward replaceable incoming stream — taken once by the pump.
     incoming_rx: std::sync::Mutex<Option<mpsc::UnboundedReceiver<IncomingCommand>>>,
@@ -331,6 +335,7 @@ impl SupervisedClient {
 
         let inner = Arc::new(RwLock::new(Arc::new(client)));
         state.store(ConnState::Connected as u8, Ordering::SeqCst);
+        let connection_generation = Arc::new(AtomicU64::new(1));
 
         let (out_tx, out_rx) = mpsc::unbounded_channel();
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
@@ -344,6 +349,7 @@ impl SupervisedClient {
         let supervisor = tokio::spawn(supervisor_loop(SupervisorCtx {
             inner: inner.clone(),
             state: state.clone(),
+            connection_generation: connection_generation.clone(),
             registry: registry.clone(),
             out_tx,
             shutdown_rx,
@@ -356,6 +362,7 @@ impl SupervisedClient {
         Ok(SupervisedClient {
             inner,
             state,
+            connection_generation,
             registry,
             incoming_rx: std::sync::Mutex::new(Some(out_rx)),
             shutdown_tx,
@@ -382,6 +389,16 @@ impl SupervisedClient {
     /// Current connection state.
     pub fn state(&self) -> ConnState {
         ConnState::from_u8(self.state.load(Ordering::SeqCst))
+    }
+
+    /// Monotonic generation of fully established connections.
+    ///
+    /// Unlike sampling [`state`](Self::state), this cannot miss a disconnect
+    /// and reconnect that both occur between two observations. A new value
+    /// means registration and recorded-subscription replay have completed on a
+    /// new broker socket.
+    pub fn connection_generation(&self) -> u64 {
+        self.connection_generation.load(Ordering::SeqCst)
     }
 
     /// Whether outbound calls will be accepted right now.
@@ -735,6 +752,7 @@ impl Drop for SupervisedClient {
 struct SupervisorCtx {
     inner: Arc<RwLock<Arc<NodedClient>>>,
     state: Arc<AtomicU8>,
+    connection_generation: Arc<AtomicU64>,
     registry: SubscriptionRegistry,
     out_tx: mpsc::UnboundedSender<IncomingCommand>,
     shutdown_rx: watch::Receiver<bool>,
@@ -902,6 +920,7 @@ async fn supervisor_loop(mut ctx: SupervisorCtx) {
                                 return;
                             }
                             *ctx.inner.write().await = Arc::new(client);
+                            ctx.connection_generation.fetch_add(1, Ordering::SeqCst);
                             ctx.state
                                 .store(ConnState::Connected as u8, Ordering::SeqCst);
                             tracing::info!(
