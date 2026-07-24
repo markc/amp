@@ -62,6 +62,11 @@ pub(crate) fn update_process_gauges(inner: &Arc<RecorderInner>) {
         g.insert("cosmix_process_open_fds", v);
         fan_to_prometheus(inner, "cosmix_process_open_fds", v);
     }
+
+    if let Some(cpu_s) = read_cpu_seconds_total() {
+        g.insert("cosmix_process_cpu_seconds_total", cpu_s);
+        fan_to_prometheus(inner, "cosmix_process_cpu_seconds_total", cpu_s);
+    }
 }
 
 /// Codex round-3 MAJOR: built-in process gauges live in the recorder
@@ -84,6 +89,21 @@ fn fan_to_prometheus(inner: &Arc<RecorderInner>, name: &'static str, value: f64)
 
 #[cfg(not(feature = "prometheus"))]
 fn fan_to_prometheus(_inner: &Arc<RecorderInner>, _name: &'static str, _value: f64) {}
+
+/// Cumulative on-CPU time of this process in SECONDS, from
+/// `/proc/self/schedstat` field 1 (nanoseconds spent on-cpu). Chosen
+/// over `/proc/self/stat` utime+stime because schedstat reports
+/// nanoseconds directly — no `CLK_TCK` (`sysconf`) dependency, which
+/// this libc-free crate cannot query portably — and its on-cpu
+/// semantics match the cgroup `CPUUsageNSec` an external sampler
+/// compares against. `_total` suffix: monotone counter by Prometheus
+/// convention (it rides the built-in gauge side map like the other
+/// process built-ins; consumers must treat it as a counter series).
+fn read_cpu_seconds_total() -> Option<f64> {
+    let schedstat = std::fs::read_to_string("/proc/self/schedstat").ok()?;
+    let on_cpu_ns = schedstat.split_whitespace().next()?.parse::<u64>().ok()?;
+    Some(on_cpu_ns as f64 / 1_000_000_000.0)
+}
 
 /// Parse `VmRSS:` (in kilobytes per kernel convention — the
 /// `kB` suffix is literal regardless of system page size) from
@@ -207,5 +227,25 @@ mod tests {
         }
         let n = count_open_fds().expect("/proc/self/fd readable on Linux");
         assert!(n >= 3, "expected at least stdin/stdout/stderr, got {n}");
+    }
+
+    #[test]
+    fn cpu_seconds_total_is_positive_and_monotone() {
+        if !std::path::Path::new("/proc/self/schedstat").exists() {
+            return; // non-Linux / restricted sandbox: gauge goes dark, by design
+        }
+        let a = read_cpu_seconds_total().expect("/proc/self/schedstat readable on Linux");
+        assert!(
+            a > 0.0,
+            "process has consumed some CPU by test time, got {a}"
+        );
+        // Burn a little CPU; the counter must never decrease.
+        let mut x = 0u64;
+        for i in 0..2_000_000u64 {
+            x = x.wrapping_add(i * 31);
+        }
+        std::hint::black_box(x);
+        let b = read_cpu_seconds_total().unwrap();
+        assert!(b >= a, "cpu counter went backwards: {a} -> {b}");
     }
 }

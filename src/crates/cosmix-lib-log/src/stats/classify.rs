@@ -136,10 +136,11 @@ pub fn with_classifications<R>(f: impl FnOnce(&HashMap<&'static str, LabelSensit
 pub(crate) fn classify_built_in_metrics() {
     let safe = &[
         // Plan §3 "built-in counters":
-        "cosmix_log_events_total",       // labels: level, target_root
-        "cosmix_process_uptime_seconds", // no labels
-        "cosmix_process_memory_kb",      // no labels
-        "cosmix_process_open_fds",       // no labels
+        "cosmix_log_events_total",          // labels: level, target_root
+        "cosmix_process_uptime_seconds",    // no labels
+        "cosmix_process_memory_kb",         // no labels
+        "cosmix_process_open_fds",          // no labels
+        "cosmix_process_cpu_seconds_total", // no labels; counter semantics
     ];
     for name in safe {
         classify(name, LabelSensitivity::Safe);

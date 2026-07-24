@@ -78,7 +78,7 @@ pub use labels_hash::{labels_hash, labels_hash_bytes};
 pub use prometheus::PrometheusChild;
 pub use recorder::{
     CARDINALITY_CEILING, CARDINALITY_DEFAULT, CARDINALITY_DROPS_METRIC, CARDINALITY_FLOOR,
-    InstallError, StatsRecorder, StatsRecorderBuilder, add_sink_to_installed,
+    InstallError, StatsRecorder, StatsRecorderBuilder, add_sink_to_installed, installed_recorder,
 };
 #[cfg(feature = "prometheus")]
 pub use recorder::{

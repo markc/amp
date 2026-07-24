@@ -74,6 +74,7 @@ pub(crate) const BUILTIN_GAUGE_RESERVED_NAMES: &[&str] = &[
     "cosmix_process_uptime_seconds",
     "cosmix_process_memory_kb",
     "cosmix_process_open_fds",
+    "cosmix_process_cpu_seconds_total",
 ];
 
 /// Per-metric operator description text (the second arg to
@@ -445,6 +446,16 @@ fn read_kernel_hostname() -> String {
 /// `--stats=off` / pre-init / test cases).
 pub(crate) fn shared() -> Option<Arc<RecorderInner>> {
     SHARED.get().cloned()
+}
+
+/// Handle to the process-global installed recorder, for daemons that
+/// need to drive [`crate::stats::perform_rollup`] periodically or
+/// serve `<svc>.stats.snapshot` (`handle_snapshot_amp` takes
+/// `&StatsRecorder`). `init()` consumes the recorder it installs, so
+/// this is the only post-init path to it. `None` when stats are off
+/// or init hasn't run. Cheap: clones the shared `Arc`.
+pub fn installed_recorder() -> Option<StatsRecorder> {
+    SHARED.get().cloned().map(|inner| StatsRecorder { inner })
 }
 
 impl RecorderInner {
