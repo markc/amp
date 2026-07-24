@@ -90,19 +90,34 @@ fn fan_to_prometheus(inner: &Arc<RecorderInner>, name: &'static str, value: f64)
 #[cfg(not(feature = "prometheus"))]
 fn fan_to_prometheus(_inner: &Arc<RecorderInner>, _name: &'static str, _value: f64) {}
 
-/// Cumulative on-CPU time of this process in SECONDS, from
-/// `/proc/self/schedstat` field 1 (nanoseconds spent on-cpu). Chosen
-/// over `/proc/self/stat` utime+stime because schedstat reports
-/// nanoseconds directly — no `CLK_TCK` (`sysconf`) dependency, which
-/// this libc-free crate cannot query portably — and its on-cpu
-/// semantics match the cgroup `CPUUsageNSec` an external sampler
-/// compares against. `_total` suffix: monotone counter by Prometheus
-/// convention (it rides the built-in gauge side map like the other
-/// process built-ins; consumers must treat it as a counter series).
+/// Cumulative CPU time of this process (ALL threads, user+system) in
+/// SECONDS, from `/proc/self/stat` fields 14+15 (utime+stime).
+///
+/// NOT `/proc/self/schedstat` — that file is main-thread-only, which
+/// under-reported a 12-thread embed daemon by ~4 orders of magnitude
+/// on the 2026-07-25 indexd canary (0.06s reported vs ~366s cgroup).
+/// utime/stime are in USER_HZ ticks, which the kernel FIXES at 100
+/// for the procfs interface regardless of CONFIG_HZ, so /100.0 is
+/// correct on Linux without a `sysconf(_SC_CLK_TCK)` (libc) call.
+/// Excludes reaped children (cutime/cstime) — this series is "this
+/// process", while cgroup CPUUsageNSec also covers live children;
+/// samplers comparing the two should expect cgroup >= this.
+///
+/// `_total` suffix: monotone counter by Prometheus convention (it
+/// rides the built-in gauge side map like the other process
+/// built-ins; consumers must treat it as a counter series).
 fn read_cpu_seconds_total() -> Option<f64> {
-    let schedstat = std::fs::read_to_string("/proc/self/schedstat").ok()?;
-    let on_cpu_ns = schedstat.split_whitespace().next()?.parse::<u64>().ok()?;
-    Some(on_cpu_ns as f64 / 1_000_000_000.0)
+    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    // Field 2 (comm) is parenthesised and may contain spaces/parens;
+    // fields 3+ start after the LAST ')'.
+    let after_comm = &stat[stat.rfind(')')? + 1..];
+    let mut fields = after_comm.split_whitespace();
+    // after_comm fields: [0]=state(3) ... utime is overall field 14 →
+    // index 11 here; stime field 15 → index 12.
+    let utime = fields.nth(11)?.parse::<u64>().ok()?;
+    let stime = fields.next()?.parse::<u64>().ok()?;
+    const USER_HZ: f64 = 100.0;
+    Some((utime + stime) as f64 / USER_HZ)
 }
 
 /// Parse `VmRSS:` (in kilobytes per kernel convention — the
@@ -230,22 +245,30 @@ mod tests {
     }
 
     #[test]
-    fn cpu_seconds_total_is_positive_and_monotone() {
-        if !std::path::Path::new("/proc/self/schedstat").exists() {
+    fn cpu_seconds_total_is_monotone_and_counts_all_threads() {
+        if !std::path::Path::new("/proc/self/stat").exists() {
             return; // non-Linux / restricted sandbox: gauge goes dark, by design
         }
-        let a = read_cpu_seconds_total().expect("/proc/self/schedstat readable on Linux");
-        assert!(
-            a > 0.0,
-            "process has consumed some CPU by test time, got {a}"
-        );
-        // Burn a little CPU; the counter must never decrease.
-        let mut x = 0u64;
-        for i in 0..2_000_000u64 {
-            x = x.wrapping_add(i * 31);
-        }
-        std::hint::black_box(x);
+        let a = read_cpu_seconds_total().expect("/proc/self/stat readable on Linux");
+        // Burn several USER_HZ ticks (10ms each) on a SPAWNED thread —
+        // the whole point of the /proc/self/stat source is counting
+        // threads other than main (the schedstat regression this
+        // replaces under-reported a 12-thread daemon ~4 orders of
+        // magnitude).
+        std::thread::spawn(|| {
+            let t0 = std::time::Instant::now();
+            let mut x = 0u64;
+            while t0.elapsed() < std::time::Duration::from_millis(60) {
+                x = std::hint::black_box(x.wrapping_add(31));
+            }
+        })
+        .join()
+        .unwrap();
         let b = read_cpu_seconds_total().unwrap();
         assert!(b >= a, "cpu counter went backwards: {a} -> {b}");
+        assert!(
+            b - a >= 0.01,
+            "spawned-thread burn invisible ({a} -> {b}); is the source thread-local again?"
+        );
     }
 }
